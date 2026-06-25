@@ -1441,7 +1441,7 @@ function CreatorForm({ creator, products, onSave, onClose }) {
                   <span className="text-gray-300">이미지 복사 후 여기 클릭 → Ctrl+V</span>
                 </div>
               )}
-          </div>
+
           <div><Label>메모</Label><TA value={form.memo} onChange={set("memo")} placeholder="특이사항, 협의 내용 등" rows={2} /></div>
         </div>
         <div className="flex gap-2 mt-5"><button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2 text-sm text-gray-500">취소</button><button onClick={() => { onSave(form); onClose(); }} className="flex-1 bg-black text-white rounded-xl py-2 text-sm font-semibold">저장</button></div>
