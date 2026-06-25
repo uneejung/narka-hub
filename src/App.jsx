@@ -31,28 +31,31 @@ function useAppState() {
   const [meetings, setMeetingsRaw] = useState([]);
   const [references, setReferencesRaw] = useState([]);
   const [csvRows, setCsvRowsRaw] = useState([]);
+  const [creators, setCreatorsRaw] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const [p, a, m, r, c] = await Promise.all([
+      const [p, a, m, r, c, cr] = await Promise.all([
         sbGet("narka_products", INIT_PRODUCTS),
         sbGet("narka_assets", []),
         sbGet("narka_meetings", []),
         sbGet("narka_references", []),
         sbGet("narka_csvrows", []),
+        sbGet("narka_creators", []),
       ]);
-      setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r); setCsvRowsRaw(c);
+      setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r); setCsvRowsRaw(c); setCreatorsRaw(cr);
       setLoaded(true);
     }
     load();
     const channel = supabase.channel("narka_sync")
       .on("postgres_changes", { event: "*", schema: "public" }, async () => {
-        const [p, a, m, r, c] = await Promise.all([
+        const [p, a, m, r, c, cr] = await Promise.all([
           sbGet("narka_products", INIT_PRODUCTS), sbGet("narka_assets", []),
-          sbGet("narka_meetings", []), sbGet("narka_references", []), sbGet("narka_csvrows", []),
+          sbGet("narka_meetings", []), sbGet("narka_references", []),
+          sbGet("narka_csvrows", []), sbGet("narka_creators", []),
         ]);
-        setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r); setCsvRowsRaw(c);
+        setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r); setCsvRowsRaw(c); setCreatorsRaw(cr);
       }).subscribe();
     return () => supabase.removeChannel(channel);
   }, []);
@@ -68,6 +71,7 @@ function useAppState() {
     meetings, setMeetings: mk(setMeetingsRaw, "narka_meetings"),
     references, setReferences: mk(setReferencesRaw, "narka_references"),
     csvRows, setCsvRows: mk(setCsvRowsRaw, "narka_csvrows"),
+    creators, setCreators: mk(setCreatorsRaw, "narka_creators"),
     loaded,
   };
 }
@@ -304,8 +308,11 @@ function ContentsDashboardTab({ products, assets }) {
 
   const grouped = {};
   prod.usps.forEach(u => { grouped[u.id] = []; });
+  // USP 없는 소재도 'none' 버킷에
+  grouped["__none__"] = [];
   assets.filter(a => a.productId === activePid).forEach(a => {
     if (a.uspId && grouped[a.uspId]) grouped[a.uspId].push(a);
+    else grouped["__none__"].push(a);
   });
 
   const totalAssets = assets.filter(a => a.productId === activePid).length;
@@ -331,6 +338,32 @@ function ContentsDashboardTab({ products, assets }) {
         <p className="text-sm text-gray-400 text-center py-16">제품X편익 탭에서 편익 꼭지를 먼저 추가하세요</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {grouped["__none__"]?.length > 0 && (
+            <div className="bg-white border border-dashed border-gray-300 rounded-xl p-4 shadow-sm md:col-span-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-2 h-2 rounded-full bg-gray-300" />
+                <p className="text-sm font-semibold text-gray-500">USP 미분류 소재</p>
+                <span className="text-xs text-gray-400">{grouped["__none__"].length}개</span>
+              </div>
+              <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+                {grouped["__none__"].map(a => (
+                  <div key={a.id} className="rounded-xl overflow-hidden border border-gray-100">
+                    {a.thumbUrl ? (
+                      <div className="relative cursor-pointer" style={{ aspectRatio: "4/5" }} onClick={() => a.videoUrl && window.open(a.videoUrl, "_blank")}>
+                        <img src={a.thumbUrl} alt="" className="w-full h-full object-cover" />
+                        {a.videoUrl && <div className="absolute inset-0 bg-black/20 flex items-center justify-center"><div className="w-6 h-6 bg-white/90 rounded-full flex items-center justify-center"><span className="text-xs ml-0.5">▶</span></div></div>}
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 flex items-center justify-center" style={{ aspectRatio: "4/5" }}>
+                        <span className="text-xl text-gray-200">🎬</span>
+                      </div>
+                    )}
+                    <div className="p-1.5"><p className="text-xs text-gray-600 truncate">{a.title || "(제목없음)"}</p></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {prod.usps.map(u => {
             const items = grouped[u.id] || [];
             return (
@@ -1262,8 +1295,7 @@ function RefForm({ ref_, countries, cats, brands, onSave, onClose }) {
 }
 
 // ── TAB 7: Creator ────────────────────────────────────────────
-function CreatorTab({ products }) {
-  const [creators, setCreators] = useState([]);
+function CreatorTab({ products, creators, setCreators }) {
   const [filterPid, setFilterPid] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editCreator, setEditCreator] = useState(null);
@@ -1288,7 +1320,7 @@ function CreatorTab({ products }) {
             const prod = products.find(p => p.id === c.productId);
             return (
               <div key={c.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition group relative cursor-pointer" onClick={() => { setEditCreator(c); setShowForm(true); }}>
-                {c.thumbUrl ? <img src={c.thumbUrl} alt="" className="w-full h-32 object-cover" /> : <div className="h-32 bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center"><span className="text-4xl">🌟</span></div>}
+                {c.thumbUrl ? <div style={{ aspectRatio: "4/5" }}><img src={c.thumbUrl} alt="" className="w-full h-full object-cover" /></div> : <div className="bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center" style={{ aspectRatio: "4/5" }}><span className="text-4xl">🌟</span></div>}
                 <button onClick={e => { e.stopPropagation(); setDeleteTarget(c.id); }} className="absolute top-2 right-2 w-6 h-6 bg-black/60 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center">×</button>
                 <div className="p-3">
                   <p className="text-sm font-semibold text-gray-800 truncate">{c.name}</p>
@@ -1343,10 +1375,10 @@ function CreatorForm({ creator, products, onSave, onClose }) {
 }
 
 // ── IMPORT / EXPORT ───────────────────────────────────────────
-function useImportExport({ products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows }) {
+function useImportExport({ products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows, creators, setCreators }) {
   const importRef = useRef();
   const exportData = () => {
-    const blob = new Blob([JSON.stringify({ products, assets, meetings, references, csvRows }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ products, assets, meetings, references, csvRows, creators }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `narka-${new Date().toISOString().slice(0, 10)}.json`; a.click();
   };
@@ -1361,6 +1393,7 @@ function useImportExport({ products, setProducts, assets, setAssets, meetings, s
         if (d.meetings) setMeetings(d.meetings);
         if (d.references) setReferences(d.references);
         if (d.csvRows) setCsvRows(d.csvRows);
+        if (d.creators) setCreators(d.creators);
         alert("불러오기 완료!");
       } catch { alert("파일 형식 오류"); }
     };
@@ -1382,8 +1415,8 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState("archive");
-  const { products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows, loaded } = useAppState();
-  const { importRef, exportData, importData } = useImportExport({ products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows });
+  const { products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows, creators, setCreators, loaded } = useAppState();
+  const { importRef, exportData, importData } = useImportExport({ products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows, creators, setCreators });
 
   const winningCount = assets.filter(a => a.isWinning).length;
   const onCount = assets.filter(a => a.status === "ON").length;
@@ -1428,7 +1461,7 @@ export default function App() {
         {tab === "meeting" && <DeveloperTab meetings={meetings} setMeetings={setMeetings} products={products} assets={assets} csvRows={csvRows} />}
         {tab === "metaraw" && <MetaRawTab csvRows={csvRows} setCsvRows={setCsvRows} assets={assets} products={products} />}
         {tab === "reference" && <ReferenceTab references={references} setReferences={setReferences} />}
-        {tab === "creator" && <CreatorTab products={products} />}
+        {tab === "creator" && <CreatorTab products={products} creators={creators} setCreators={setCreators} />}
       </div>
     </div>
   );
