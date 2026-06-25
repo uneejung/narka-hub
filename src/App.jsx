@@ -509,19 +509,24 @@ function AssetForm({ asset, products, onSave, onClose }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>대표 이미지 (캡처본)</Label>
-              <label className="block cursor-pointer">
-                {form.thumbUrl ? (
-                  <div className="relative group" style={{ aspectRatio: "4/5", maxHeight: 200 }}>
-                    <img src={form.thumbUrl} alt="" className="w-full h-full object-cover rounded-xl border border-gray-200" />
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center"><span className="text-white text-xs">교체</span></div>
+              {form.thumbUrl ? (
+                <div className="relative group cursor-pointer" style={{ aspectRatio: "4/5", maxHeight: 220 }}
+                  onPaste={handlePaste} tabIndex={0} onClick={() => set("thumbUrl")("")}>
+                  <img src={form.thumbUrl} alt="" className="w-full h-full object-cover rounded-xl border border-gray-200" />
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl flex flex-col items-center justify-center gap-1">
+                    <span className="text-white text-xs">클릭하여 제거</span>
+                    <span className="text-white/70 text-xs">Ctrl+V로 교체</span>
                   </div>
-                ) : (
-                  <div className="border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-xs text-gray-400 hover:border-gray-400 transition" style={{ aspectRatio: "4/5", maxHeight: 200 }}>
-                    + 이미지 업로드<br />(9:16 비율)
-                  </div>
-                )}
-                <input type="file" accept="image/*" className="hidden" onChange={handleThumb} />
-              </label>
+                </div>
+              ) : (
+                <div onPaste={handlePaste} tabIndex={0}
+                  className="border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-xs text-gray-400 hover:border-indigo-300 transition gap-2 cursor-text"
+                  style={{ aspectRatio: "4/5", maxHeight: 220 }}>
+                  <span className="text-2xl">📋</span>
+                  <span>Ctrl+V 붙여넣기</span>
+                  <span className="text-gray-300">이미지 복사 후 클릭 → Ctrl+V</span>
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-3">
               <div>
@@ -1336,8 +1341,16 @@ function RefForm({ ref_, countries, cats, brands, onSave, onClose }) {
           <div><Label>링크 (광고 라이브러리 등)</Label><TF value={form.url} onChange={set("url")} placeholder="https://..." /></div>
           <div><Label>대표 이미지</Label>
             <label className="block cursor-pointer">
-              {form.thumbUrl ? <img src={form.thumbUrl} alt="" className="w-full h-32 object-cover rounded-xl border border-gray-200" /> : <div className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-xs text-gray-400 hover:border-gray-400 transition">+ 이미지 업로드</div>}
-              <input type="file" accept="image/*" className="hidden" onChange={handleThumb} />
+              {form.thumbUrl ? (
+                <div className="relative group cursor-pointer" onClick={() => set("thumbUrl")("")}>
+                  <img src={form.thumbUrl} alt="" className="w-full h-32 object-cover rounded-xl border border-gray-200" />
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center"><span className="text-white text-xs">클릭하여 제거</span></div>
+                </div>
+              ) : (
+                <div onPaste={handlePaste} tabIndex={0} className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-xs text-gray-400 hover:border-indigo-300 transition gap-1 cursor-text">
+                  <span className="text-2xl">📋</span><span>Ctrl+V 붙여넣기</span><span className="text-gray-300">이미지 복사 후 클릭 → Ctrl+V</span>
+                </div>
+              )}
             </label>
           </div>
           <div><Label>메모</Label><TA value={form.memo} onChange={set("memo")} placeholder="자유 메모" rows={2} /></div>
