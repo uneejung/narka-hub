@@ -914,24 +914,58 @@ function DeveloperTab({ meetings, setMeetings, products, assets, csvRows }) {
             {(() => {
               const prod = products.find(p => p.id === activePid);
               if (!prod || prod.usps.length === 0) return <p className="text-xs text-gray-400">제품X편익 탭에서 편익을 먼저 추가하세요</p>;
-              const localUsps = form?.uspCheck?.[activePid]?._visible !== undefined
-                ? prod.usps.filter(u => form.uspCheck[activePid]?.[`_hide_${u.id}`] !== true)
-                : prod.usps;
+              // 이 회의록에서만 숨긴 USP 목록 (제품X편익에는 영향 없음)
+              const hiddenUsps = form?.hiddenUsps?.[activePid] || [];
+              const visibleUsps = prod.usps.filter(u => !hiddenUsps.includes(u.id));
+              const hideUsp = (uid) => {
+                const current = form?.hiddenUsps?.[activePid] || [];
+                upd({ ...form, hiddenUsps: { ...(form.hiddenUsps || {}), [activePid]: [...current, uid] } });
+              };
               return (
                 <div className="space-y-3">
-                  {localUsps.map(u => (
+                  {hiddenUsps.length > 0 && (
+                    <button onClick={() => upd({ ...form, hiddenUsps: { ...(form.hiddenUsps || {}), [activePid]: [] } })}
+                      className="text-xs text-gray-400 hover:text-gray-600 underline">
+                      숨긴 편익 {hiddenUsps.length}개 복원
+                    </button>
+                  )}
+                  {visibleUsps.map(u => (
                     <div key={u.id} className="border border-gray-100 rounded-xl p-3 bg-gray-50">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs font-semibold text-gray-700">{u.label}</span>
-                        <div className="flex gap-1 ml-auto">
-                          {["none","진행중","완료","미개발"].map(s => <button key={s} onClick={() => setUC(activePid, u.id, s)} className={`text-xs px-2 py-0.5 rounded-full border transition ${getUC(activePid, u.id) === s ? "bg-black text-white border-black" : "border-gray-200 text-gray-400"}`}>{s === "none" ? "—" : s}</button>)}
-                          <button onClick={() => upd({ ...form, uspCheck: { ...form.uspCheck, [activePid]: { ...(form.uspCheck?.[activePid] || {}), [`_hide_${u.id}`]: true } } })} className="text-gray-300 hover:text-red-400 text-sm ml-1">×</button>
+                        <div className="flex gap-1 ml-auto flex-wrap">
+                          {["none","진행중","완료","미개발"].map(s => (
+                            <button key={s} onClick={() => setUC(activePid, u.id, s)}
+                              className={`text-xs px-2 py-0.5 rounded-full border transition ${getUC(activePid, u.id) === s ? "bg-black text-white border-black" : "border-gray-200 text-gray-400"}`}>
+                              {s === "none" ? "—" : s}
+                            </button>
+                          ))}
+                          <button onClick={() => hideUsp(u.id)} className="text-gray-300 hover:text-red-400 text-sm ml-1" title="이 회의록에서만 숨기기">×</button>
                         </div>
                       </div>
-                      {u.copies.length > 0 && <div className="flex flex-wrap gap-1 mb-2">{u.copies.map(c => <span key={c.id} className="text-xs px-2 py-0.5 rounded bg-white border border-gray-100 text-gray-500">{c.text}</span>)}</div>}
-                      <input className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none" value={getUN(activePid, u.id)} onChange={e => setUN(activePid, u.id, e.target.value)} placeholder="Next Action 메모" />
+                      {u.copies.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {u.copies.map(c => {
+                            const hiddenCopies = form?.hiddenCopies?.[activePid]?.[u.id] || [];
+                            if (hiddenCopies.includes(c.id)) return null;
+                            return (
+                              <div key={c.id} className="flex items-center gap-1 bg-white border border-gray-100 rounded px-2 py-0.5">
+                                <span className="text-xs text-gray-500">{c.text}</span>
+                                <button onClick={() => {
+                                  const curr = form?.hiddenCopies?.[activePid]?.[u.id] || [];
+                                  upd({ ...form, hiddenCopies: { ...(form.hiddenCopies || {}), [activePid]: { ...(form.hiddenCopies?.[activePid] || {}), [u.id]: [...curr, c.id] } } });
+                                }} className="text-gray-300 hover:text-red-400 text-xs leading-none">×</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <input className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none"
+                        value={getUN(activePid, u.id)} onChange={e => setUN(activePid, u.id, e.target.value)}
+                        placeholder="Next Action 메모" />
                     </div>
                   ))}
+                  {visibleUsps.length === 0 && <p className="text-xs text-gray-400 text-center py-4">모든 편익이 숨겨졌습니다. 위 복원 버튼을 눌러주세요</p>}
                 </div>
               );
             })()}
@@ -940,8 +974,18 @@ function DeveloperTab({ meetings, setMeetings, products, assets, csvRows }) {
           {/* Performance (기획자) */}
           <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-5 shadow-sm">
             <p className="font-bold text-sm mb-1">📊 Performance</p>
-            <p className="text-xs text-gray-400 mb-4">품목별 BEST/WORST 소재를 선택하고 분석 메모를 남기세요</p>
-            <div className="flex gap-2 flex-wrap mb-4">{products.map(p => <button key={p.id} onClick={() => setActivePid(p.id)} className={`text-xs px-3 py-1 rounded-full border transition ${activePid === p.id ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-500"}`}>{p.name}</button>)}</div>
+            <p className="text-xs text-gray-400 mb-4">품목별 BEST/WORST 소재를 선택하고 분석 메모를 남기세요 (여기서 삭제해도 제품X편익에 영향 없음)</p>
+            <div className="flex gap-2 flex-wrap mb-4">
+              {products.filter(p => !(form?.hiddenPerfProducts || []).includes(p.id)).map(p => (
+                <div key={p.id} className="flex items-center gap-0.5">
+                  <button onClick={() => setActivePid(p.id)} className={`text-xs px-3 py-1 rounded-full border transition ${activePid === p.id ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-500"}`}>{p.name}</button>
+                  <button onClick={() => upd({ ...form, hiddenPerfProducts: [...(form.hiddenPerfProducts || []), p.id] })} className="text-gray-300 hover:text-red-400 text-sm">×</button>
+                </div>
+              ))}
+              {(form?.hiddenPerfProducts || []).length > 0 && (
+                <button onClick={() => upd({ ...form, hiddenPerfProducts: [] })} className="text-xs text-gray-400 hover:text-gray-600 underline">복원</button>
+              )}
+            </div>
             {(() => {
               const bp = getBP(activePid);
               return (
@@ -974,8 +1018,18 @@ function DeveloperTab({ meetings, setMeetings, products, assets, csvRows }) {
           {/* Contents PD (제작자) */}
           <div className="bg-purple-50/50 border border-purple-100 rounded-xl p-5 shadow-sm">
             <p className="font-bold text-sm mb-1">🎨 Contents PD</p>
-            <p className="text-xs text-gray-400 mb-4">기존 라이브된 소재에서 개선이 필요한 사항에 대해 회고하고, 새롭게 시도할 소재에 대한 레퍼런스를 미리 준비하세요</p>
-            <div className="flex gap-2 flex-wrap mb-4">{products.map(p => <button key={p.id} onClick={() => setActivePid(p.id)} className={`text-xs px-3 py-1 rounded-full border transition ${activePid === p.id ? "bg-purple-600 text-white border-purple-600" : "border-gray-200 text-gray-500"}`}>{p.name}</button>)}</div>
+            <p className="text-xs text-gray-400 mb-4">기존 라이브된 소재에서 개선이 필요한 사항에 대해 회고하고, 새롭게 시도할 소재에 대한 레퍼런스를 미리 준비하세요 (여기서 삭제해도 제품X편익에 영향 없음)</p>
+            <div className="flex gap-2 flex-wrap mb-4">
+              {products.filter(p => !(form?.hiddenPDProducts || []).includes(p.id)).map(p => (
+                <div key={p.id} className="flex items-center gap-0.5">
+                  <button onClick={() => setActivePid(p.id)} className={`text-xs px-3 py-1 rounded-full border transition ${activePid === p.id ? "bg-purple-600 text-white border-purple-600" : "border-gray-200 text-gray-500"}`}>{p.name}</button>
+                  <button onClick={() => upd({ ...form, hiddenPDProducts: [...(form.hiddenPDProducts || []), p.id] })} className="text-gray-300 hover:text-red-400 text-sm">×</button>
+                </div>
+              ))}
+              {(form?.hiddenPDProducts || []).length > 0 && (
+                <button onClick={() => upd({ ...form, hiddenPDProducts: [] })} className="text-xs text-gray-400 hover:text-gray-600 underline">복원</button>
+              )}
+            </div>
             {(() => {
               const bp = getBP(activePid);
               return (
@@ -1362,9 +1416,18 @@ function CreatorForm({ creator, products, onSave, onClose }) {
           <div><Label>콘텐츠 링크</Label><TF value={form.contentUrl} onChange={set("contentUrl")} placeholder="https://instagram.com/..." /></div>
           <div><Label>프로필/콘텐츠 이미지</Label>
             <label className="block cursor-pointer">
-              {form.thumbUrl ? <img src={form.thumbUrl} alt="" className="w-full h-32 object-cover rounded-xl border border-gray-200" /> : <div onPaste={handlePaste} tabIndex={0} className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-xs text-gray-400 hover:border-gray-400 transition gap-1"><span>+ 클릭하여 업로드</span><span className="text-gray-300">또는 Ctrl+V 붙여넣기</span></div>}
-              <input type="file" accept="image/*" className="hidden" onChange={handleThumb} />
-            </label>
+              {form.thumbUrl ? (
+                <div className="relative group cursor-pointer" onClick={() => set("thumbUrl")("")}>
+                  <img src={form.thumbUrl} alt="" className="w-full h-32 object-cover rounded-xl border border-gray-200" />
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center"><span className="text-white text-xs">클릭하여 제거</span></div>
+                </div>
+              ) : (
+                <div onPaste={handlePaste} tabIndex={0} className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-xs text-gray-400 hover:border-indigo-300 transition gap-1 cursor-text">
+                  <span className="text-2xl">📋</span>
+                  <span>Ctrl+V 붙여넣기</span>
+                  <span className="text-gray-300">이미지 복사 후 여기 클릭 → Ctrl+V</span>
+                </div>
+              )}
           </div>
           <div><Label>메모</Label><TA value={form.memo} onChange={set("memo")} placeholder="특이사항, 협의 내용 등" rows={2} /></div>
         </div>
@@ -1414,7 +1477,13 @@ const TABS = [
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("archive");
+  const getInitialTab = () => {
+    const hash = window.location.hash.replace("#", "");
+    const validTabs = ["dashboard","usp","archive","meeting","metaraw","reference","creator"];
+    return validTabs.includes(hash) ? hash : "archive";
+  };
+  const [tab, setTabRaw] = useState(getInitialTab);
+  const setTab = (t) => { setTabRaw(t); window.location.hash = t; };
   const { products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows, creators, setCreators, loaded } = useAppState();
   const { importRef, exportData, importData } = useImportExport({ products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows, creators, setCreators });
 
