@@ -1,3 +1,4 @@
+import { supabase } from "./supabase.js";
 import { useState, useRef, useEffect, useCallback } from "react";
 
 // ───────────────────────────────────────────────
@@ -37,24 +38,58 @@ function genId() { return `id_${Date.now()}_${Math.random().toString(36).slice(2
 // ───────────────────────────────────────────────
 // PERSIST (sessionStorage as surrogate)
 // ───────────────────────────────────────────────
-function loadLS(key, def) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; }
+async function sbGet(table, def) {
+  try {
+    const { data, error } = await supabase.from(table).select("*").eq("id", "singleton").single();
+    if (error || !data) return def;
+    return JSON.parse(data.value);
+  } catch { return def; }
 }
-function saveLS(key, val) {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+async function sbSet(table, value) {
+  try {
+    await supabase.from(table).upsert({ id: "singleton", value: JSON.stringify(value) });
+  } catch {}
 }
 function useAppState() {
-  const [products, setProductsRaw] = useState(() => loadLS("narka_products", INIT_PRODUCTS));
-  const [assets, setAssetsRaw] = useState(() => loadLS("narka_assets", []));
-  const [meetings, setMeetingsRaw] = useState(() => loadLS("narka_meetings", []));
-  const [references, setReferencesRaw] = useState(() => loadLS("narka_references", []));
+  const [products, setProductsRaw] = useState(INIT_PRODUCTS);
+  const [assets, setAssetsRaw] = useState([]);
+  const [meetings, setMeetingsRaw] = useState([]);
+  const [references, setReferencesRaw] = useState([]);
+  const [loaded, setLoaded] = useState(false);
 
-  const setProducts = (v) => { setProductsRaw(prev => { const next = typeof v === "function" ? v(prev) : v; saveLS("narka_products", next); return next; }); };
-  const setAssets = (v) => { setAssetsRaw(prev => { const next = typeof v === "function" ? v(prev) : v; saveLS("narka_assets", next); return next; }); };
-  const setMeetings = (v) => { setMeetingsRaw(prev => { const next = typeof v === "function" ? v(prev) : v; saveLS("narka_meetings", next); return next; }); };
-  const setReferences = (v) => { setReferencesRaw(prev => { const next = typeof v === "function" ? v(prev) : v; saveLS("narka_references", next); return next; }); };
+  useEffect(() => {
+    async function load() {
+      const [p, a, m, r] = await Promise.all([
+        sbGet("narka_products", INIT_PRODUCTS),
+        sbGet("narka_assets", []),
+        sbGet("narka_meetings", []),
+        sbGet("narka_references", []),
+      ]);
+      setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r);
+      setLoaded(true);
+    }
+    load();
+    // 실시간 동기화
+    const channel = supabase.channel("narka_changes")
+      .on("postgres_changes", { event: "*", schema: "public" }, async () => {
+        const [p, a, m, r] = await Promise.all([
+          sbGet("narka_products", INIT_PRODUCTS),
+          sbGet("narka_assets", []),
+          sbGet("narka_meetings", []),
+          sbGet("narka_references", []),
+        ]);
+        setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r);
+      }).subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []);
 
-  return { products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences };
+  const setProducts = (v) => { setProductsRaw(prev => { const next = typeof v === "function" ? v(prev) : v; sbSet("narka_products", next); return next; }); };
+  const setAssets = (v) => { setAssetsRaw(prev => { const next = typeof v === "function" ? v(prev) : v; sbSet("narka_assets", next); return next; }); };
+  const setMeetings = (v) => { setMeetingsRaw(prev => { const next = typeof v === "function" ? v(prev) : v; sbSet("narka_meetings", next); return next; }); };
+  const setReferences = (v) => { setReferencesRaw(prev => { const next = typeof v === "function" ? v(prev) : v; sbSet("narka_references", next); return next; }); };
+
+  if (!loaded) return { products: INIT_PRODUCTS, setProducts, assets: [], setAssets, meetings: [], setMeetings, references: [], setReferences, _loading: true };
+  return { products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, _loading: false };
 }
 
 // ───────────────────────────────────────────────
