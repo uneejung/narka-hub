@@ -1427,21 +1427,20 @@ function CreatorForm({ creator, products, onSave, onClose }) {
           <div><Label>계정 핸들</Label><TF value={form.handle} onChange={set("handle")} placeholder="@handle" /></div>
           <div><Label>팔로워 수</Label><TF value={form.followers} onChange={set("followers")} placeholder="ex. 12.5만" /></div>
           <div><Label>콘텐츠 링크</Label><TF value={form.contentUrl} onChange={set("contentUrl")} placeholder="https://instagram.com/..." /></div>
-          <div><Label>프로필/콘텐츠 이미지</Label>
-            <label className="block cursor-pointer">
-              {form.thumbUrl ? (
-                <div className="relative group cursor-pointer" onClick={() => set("thumbUrl")("")}>
-                  <img src={form.thumbUrl} alt="" className="w-full h-32 object-cover rounded-xl border border-gray-200" />
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center"><span className="text-white text-xs">클릭하여 제거</span></div>
-                </div>
-              ) : (
-                <div onPaste={handlePaste} tabIndex={0} className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-xs text-gray-400 hover:border-indigo-300 transition gap-1 cursor-text">
-                  <span className="text-2xl">📋</span>
-                  <span>Ctrl+V 붙여넣기</span>
-                  <span className="text-gray-300">이미지 복사 후 여기 클릭 → Ctrl+V</span>
-                </div>
-              )}
-
+<div><Label>프로필/콘텐츠 이미지</Label>
+            {form.thumbUrl ? (
+              <div className="relative group cursor-pointer" onClick={() => set("thumbUrl")("")}>
+                <img src={form.thumbUrl} alt="" className="w-full h-32 object-cover rounded-xl border border-gray-200" />
+                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center"><span className="text-white text-xs">클릭하여 제거</span></div>
+              </div>
+            ) : (
+              <div onPaste={handlePaste} tabIndex={0} className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-xs text-gray-400 hover:border-indigo-300 transition gap-1 cursor-text">
+                <span className="text-2xl">📋</span>
+                <span>Ctrl+V 붙여넣기</span>
+                <span className="text-gray-300">이미지 복사 후 클릭 → Ctrl+V</span>
+              </div>
+            )}
+          </div>
           <div><Label>메모</Label><TA value={form.memo} onChange={set("memo")} placeholder="특이사항, 협의 내용 등" rows={2} /></div>
         </div>
         <div className="flex gap-2 mt-5"><button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2 text-sm text-gray-500">취소</button><button onClick={() => { onSave(form); onClose(); }} className="flex-1 bg-black text-white rounded-xl py-2 text-sm font-semibold">저장</button></div>
