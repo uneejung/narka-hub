@@ -354,13 +354,13 @@ function ContentsDashboardTab({ products, assets }) {
                       return (
                         <div key={a.id} className={`rounded-xl overflow-hidden border ${a.isWinning ? "border-amber-300" : a.result === "best" ? "border-emerald-300" : a.result === "worst" ? "border-red-200" : "border-gray-100"}`}>
                           {a.thumbUrl ? (
-                            <div className="relative cursor-pointer" style={{ aspectRatio: "9/16" }} onClick={() => a.videoUrl && window.open(a.videoUrl, "_blank")}>
+                            <div className="relative cursor-pointer" style={{ aspectRatio: "4/5" }} onClick={() => a.videoUrl && window.open(a.videoUrl, "_blank")}>
                               <img src={a.thumbUrl} alt="" className="w-full h-full object-cover" />
                               {a.videoUrl && <div className="absolute inset-0 bg-black/20 flex items-center justify-center"><div className="w-7 h-7 bg-white/90 rounded-full flex items-center justify-center"><span className="text-xs ml-0.5">▶</span></div></div>}
                               {a.isWinning && <span className="absolute top-1 right-1 text-sm">🏆</span>}
                             </div>
                           ) : (
-                            <div className="bg-gray-50 flex items-center justify-center" style={{ aspectRatio: "9/16" }}>
+                            <div className="bg-gray-50 flex items-center justify-center" style={{ aspectRatio: "4/5" }}>
                               <span className="text-2xl text-gray-200">🎬</span>
                             </div>
                           )}
@@ -402,6 +402,19 @@ function AssetForm({ asset, products, onSave, onClose }) {
     const r = new FileReader();
     r.onload = ev => set("thumbUrl")(ev.target.result);
     r.readAsDataURL(file);
+  };
+  const handlePaste = e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const file = items[i].getAsFile();
+        const r = new FileReader();
+        r.onload = ev => set("thumbUrl")(ev.target.result);
+        r.readAsDataURL(file);
+        break;
+      }
+    }
   };
 
   return (
@@ -465,12 +478,12 @@ function AssetForm({ asset, products, onSave, onClose }) {
               <Label>대표 이미지 (캡처본)</Label>
               <label className="block cursor-pointer">
                 {form.thumbUrl ? (
-                  <div className="relative group" style={{ aspectRatio: "9/16", maxHeight: 200 }}>
+                  <div className="relative group" style={{ aspectRatio: "4/5", maxHeight: 200 }}>
                     <img src={form.thumbUrl} alt="" className="w-full h-full object-cover rounded-xl border border-gray-200" />
                     <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center"><span className="text-white text-xs">교체</span></div>
                   </div>
                 ) : (
-                  <div className="border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-xs text-gray-400 hover:border-gray-400 transition" style={{ aspectRatio: "9/16", maxHeight: 200 }}>
+                  <div className="border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-xs text-gray-400 hover:border-gray-400 transition" style={{ aspectRatio: "4/5", maxHeight: 200 }}>
                     + 이미지 업로드<br />(9:16 비율)
                   </div>
                 )}
@@ -539,14 +552,14 @@ function AssetCard({ asset, products, csvRows, onClick }) {
   return (
     <div className={`bg-white border ${borderClass} rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer`} onClick={onClick}>
       {asset.thumbUrl ? (
-        <div className="relative" style={{ aspectRatio: "9/16" }} onClick={e => { if (asset.videoUrl) { e.stopPropagation(); window.open(asset.videoUrl, "_blank"); } }}>
+        <div className="relative" style={{ aspectRatio: "4/5" }} onClick={e => { if (asset.videoUrl) { e.stopPropagation(); window.open(asset.videoUrl, "_blank"); } }}>
           <img src={asset.thumbUrl} alt="" className="w-full h-full object-cover" />
           {asset.videoUrl && <div className="absolute inset-0 bg-black/20 flex items-center justify-center"><div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center"><span className="text-sm ml-0.5">▶</span></div></div>}
           {asset.isWinning && <span className="absolute top-2 right-2 text-base">🏆</span>}
           <span className={`absolute top-2 left-2 text-xs font-bold px-1.5 py-0.5 rounded-full ${asset.status === "ON" ? "bg-emerald-500 text-white" : "bg-gray-700 text-white"}`}>{asset.status || "ON"}</span>
         </div>
       ) : (
-        <div className="bg-gray-50 flex items-center justify-center relative" style={{ aspectRatio: "9/16" }}>
+        <div className="bg-gray-50 flex items-center justify-center relative" style={{ aspectRatio: "4/5" }}>
           <span className="text-3xl text-gray-200">🎬</span>
           <span className={`absolute top-2 left-2 text-xs font-bold px-1.5 py-0.5 rounded-full ${asset.status === "ON" ? "bg-emerald-500 text-white" : "bg-gray-700 text-white"}`}>{asset.status || "ON"}</span>
         </div>
@@ -1223,6 +1236,7 @@ function RefForm({ ref_, countries, cats, brands, onSave, onClose }) {
   const [form, setForm] = useState(ref_ || { id: genId(), country: "", category: "", brand: "", title: "", url: "", thumbUrl: "", memo: "" });
   const set = k => v => setForm(f => ({ ...f, [k]: v }));
   const handleThumb = e => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = ev => set("thumbUrl")(ev.target.result); r.readAsDataURL(file); };
+  const handlePaste = e => { const items = e.clipboardData?.items; if (!items) return; for (let i = 0; i < items.length; i++) { if (items[i].type.indexOf("image") !== -1) { const file = items[i].getAsFile(); const r = new FileReader(); r.onload = ev => set("thumbUrl")(ev.target.result); r.readAsDataURL(file); break; } } };
   return (
     <Modal onClose={onClose}>
       <div className="p-6">
@@ -1302,6 +1316,7 @@ function CreatorForm({ creator, products, onSave, onClose }) {
   const [form, setForm] = useState(creator || { id: genId(), productId: products[0]?.id || "", name: "", handle: "", platform: "Instagram", followers: "", contentUrl: "", thumbUrl: "", memo: "" });
   const set = k => v => setForm(f => ({ ...f, [k]: v }));
   const handleThumb = e => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = ev => set("thumbUrl")(ev.target.result); r.readAsDataURL(file); };
+  const handlePaste = e => { const items = e.clipboardData?.items; if (!items) return; for (let i = 0; i < items.length; i++) { if (items[i].type.indexOf("image") !== -1) { const file = items[i].getAsFile(); const r = new FileReader(); r.onload = ev => set("thumbUrl")(ev.target.result); r.readAsDataURL(file); break; } } };
   return (
     <Modal onClose={onClose}>
       <div className="p-6">
@@ -1315,7 +1330,7 @@ function CreatorForm({ creator, products, onSave, onClose }) {
           <div><Label>콘텐츠 링크</Label><TF value={form.contentUrl} onChange={set("contentUrl")} placeholder="https://instagram.com/..." /></div>
           <div><Label>프로필/콘텐츠 이미지</Label>
             <label className="block cursor-pointer">
-              {form.thumbUrl ? <img src={form.thumbUrl} alt="" className="w-full h-32 object-cover rounded-xl border border-gray-200" /> : <div className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-xs text-gray-400 hover:border-gray-400 transition">+ 이미지 업로드</div>}
+              {form.thumbUrl ? <img src={form.thumbUrl} alt="" className="w-full h-32 object-cover rounded-xl border border-gray-200" /> : <div onPaste={handlePaste} tabIndex={0} className="w-full h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-xs text-gray-400 hover:border-gray-400 transition gap-1"><span>+ 클릭하여 업로드</span><span className="text-gray-300">또는 Ctrl+V 붙여넣기</span></div>}
               <input type="file" accept="image/*" className="hidden" onChange={handleThumb} />
             </label>
           </div>
