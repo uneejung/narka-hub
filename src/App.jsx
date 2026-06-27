@@ -214,7 +214,8 @@ function getAssetMetrics(assetTitle, csvRows) {
   const key = bracket ? bracket[1].toLowerCase() : assetTitle.toLowerCase();
   const matched = csvRows.filter(r => {
     const name = (r.adName || r["광고 이름"] || "").toLowerCase();
-    return name.includes(key);
+    const spend = parseFloat(String(r.spend || "0").replace(/%/g,"")) || 0;
+    return name.includes(key) && spend >= 10000;
   });
   if (!matched.length) return null;
   const sum = (k) => matched.reduce((a, r) => a + (parseFloat(r[k]) || 0), 0);
@@ -1156,14 +1157,16 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
     e.target.value = ""; // 같은 파일 재업로드 허용
   };
 
-  const matchedRows = csvRows.map(row => {
-    const asset = assets.find(a => {
-      const bracket = a.title?.match(/\[([^\]]+)\]/);
-      const key = bracket ? bracket[1].toLowerCase() : (a.title || "").toLowerCase();
-      return key && (row.adName || "").toLowerCase().includes(key);
+  const matchedRows = csvRows
+    .filter(row => (parseFloat(String(row.spend || "0").replace(/%/g,"")) || 0) >= 10000)
+    .map(row => {
+      const asset = assets.find(a => {
+        const bracket = a.title?.match(/\[([^\]]+)\]/);
+        const key = bracket ? bracket[1].toLowerCase() : (a.title || "").toLowerCase();
+        return key && (row.adName || "").toLowerCase().includes(key);
+      });
+      return { ...row, assetId: asset?.id || null, productId: asset?.productId || null };
     });
-    return { ...row, assetId: asset?.id || null, productId: asset?.productId || null };
-  });
 
   const filtered = matchedRows.filter(r => filterProd === "all" || r.productId === filterProd);
   const sum = k => filtered.reduce((a, r) => { const v = parseFloat(String(r[k]).replace(/%/g,"")) || 0; return a + v; }, 0);
