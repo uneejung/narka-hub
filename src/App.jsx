@@ -186,8 +186,10 @@ const META_KEYS = {
 // CTR은 이미 소수점(%) 값으로 저장되어 있음 - 추가 변환 불필요
 
 function cleanNum(v) {
-  if (!v && v !== 0) return "";
-  return String(v).replace(/[%,\s]/g, "").trim();
+  if (v === null || v === undefined || v === "") return "";
+  // 쉼표, %, 공백, 통화기호 전부 제거
+  const cleaned = String(v).replace(/[%,\s₩$]/g, "").trim();
+  return cleaned === "-" || cleaned === "—" ? "" : cleaned;
 }
 
 // CSV 헤더 → 내부 키 매핑 (정확한 헤더명 기준)
@@ -1323,8 +1325,14 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
       return { ...row, assetId: null, productId: matchedProd?.id || null };
     });
 
-  const filtered = matchedRows.filter(r => filterProd === "all" || r.productId === filterProd);
-  const sum = k => filtered.reduce((a, r) => { const v = parseFloat(String(r[k]).replace(/%/g,"")) || 0; return a + v; }, 0);
+  const filtered = matchedRows.filter(r => {
+    if (filterProd !== "all" && r.productId !== filterProd) return false;
+    // 날짜 필터 (startDate, endDate 기준)
+    if (dateFrom && r.startDate && r.startDate.slice(0,10) < dateFrom) return false;
+    if (dateTo && r.endDate && r.endDate.slice(0,10) > dateTo) return false;
+    return true;
+  });
+  const sum = k => filtered.reduce((a, r) => { const v = parseFloat(String(r[k] || "0").replace(/[%,\s]/g,"")) || 0; return a + v; }, 0);
   const avg = k => filtered.length ? sum(k) / filtered.length : 0;
   const totalSpend = sum("spend");
   const totalConv = sum("convValue");
@@ -1377,10 +1385,18 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
         <div className="text-center py-24 text-gray-300"><p className="text-5xl mb-4">📊</p><p className="text-sm font-medium">CSV를 업로드하면 광고 성과가 표시됩니다</p></div>
       ) : (
         <>
-          <div className="flex items-center gap-2 flex-wrap mb-4">
+          <div className="flex items-center gap-2 flex-wrap mb-3">
             <span className="text-xs text-gray-400">품목</span>
             <button onClick={() => setFilterProd("all")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === "all" ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>전체</button>
             {products.map(p => <button key={p.id} onClick={() => setFilterProd(p.id)} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === p.id ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>{p.name}</button>)}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            <span className="text-xs text-gray-400">기간</span>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
+            <span className="text-xs text-gray-400">~</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
+            {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-gray-400 hover:text-gray-600 underline">초기화</button>}
+            <span className="text-xs text-gray-400">※ CSV의 광고 시작일~종료일 기준으로 필터됩니다</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {[["통합 ROAS", avgRoas, "green"], ["총 소진 예산", totalSpend ? `₩${Math.round(totalSpend).toLocaleString()}` : "—", "blue"], ["평균 CTR", avgCtrDisplay, "amber"], ["평균 CPM", `₩${Math.round(avg("cpm")).toLocaleString()}`, "gray"]].map(([l, v, c]) => (
