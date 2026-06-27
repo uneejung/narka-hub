@@ -1186,7 +1186,16 @@ function RawDataTable({ filtered }) {
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
   const [showAll, setShowAll] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const PAGE = 30;
+
+  // 날짜 필터 적용
+  const dateFiltered = filtered.filter(r => {
+    if (dateFrom && r.startDate && r.startDate.slice(0,10) < dateFrom) return false;
+    if (dateTo && r.endDate && r.endDate.slice(0,10) > dateTo) return false;
+    return true;
+  });
 
   const handleSort = (col) => {
     if (sortCol === col) {
@@ -1197,7 +1206,7 @@ function RawDataTable({ filtered }) {
     }
   };
 
-  const sorted = [...filtered].sort((a, b) => {
+  const sorted = [...dateFiltered].sort((a, b) => {
     if (!sortCol) return 0;
     const col = RAW_COLS.find(c => c.key === sortCol);
     const sk = col?.sortKey || sortCol;
@@ -1213,9 +1222,18 @@ function RawDataTable({ filtered }) {
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <p className="text-xs font-semibold text-gray-500">전체 원본 데이터 ({dateFiltered.length}행{dateFiltered.length !== filtered.length ? ` / 전체 ${filtered.length}행` : ""})</p>
+        <div className="flex items-center gap-2 ml-auto">
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
+          <span className="text-xs text-gray-400">~</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
+          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-gray-400 hover:text-gray-600">초기화</button>}
+        </div>
+      </div>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-semibold text-gray-500">전체 원본 데이터 ({filtered.length}행)</p>
-        {filtered.length > PAGE && (
+        <div />
+        {dateFiltered.length > PAGE && (
           <button onClick={() => setShowAll(v => !v)} className="text-xs text-indigo-500 hover:underline">
             {showAll ? "접기 ▲" : `전체 보기 (${filtered.length}행) ▼`}
           </button>
@@ -1263,9 +1281,9 @@ function RawDataTable({ filtered }) {
           </tbody>
         </table>
       </div>
-      {!showAll && filtered.length > PAGE && (
+      {!showAll && dateFiltered.length > PAGE && (
         <button onClick={() => setShowAll(true)} className="w-full mt-3 py-2 text-xs text-indigo-500 hover:bg-indigo-50 rounded-lg transition">
-          + {filtered.length - PAGE}행 더 보기 ▼
+          + {dateFiltered.length - PAGE}행 더 보기 ▼
         </button>
       )}
     </div>
@@ -1325,13 +1343,9 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
       return { ...row, assetId: null, productId: matchedProd?.id || null };
     });
 
-  const filtered = matchedRows.filter(r => {
-    if (filterProd !== "all" && r.productId !== filterProd) return false;
-    // 날짜 필터 (startDate, endDate 기준)
-    if (dateFrom && r.startDate && r.startDate.slice(0,10) < dateFrom) return false;
-    if (dateTo && r.endDate && r.endDate.slice(0,10) > dateTo) return false;
-    return true;
-  });
+  const filtered = matchedRows.filter(r =>
+    filterProd === "all" || r.productId === filterProd
+  );
   const sum = k => filtered.reduce((a, r) => { const v = parseFloat(String(r[k] || "0").replace(/[%,\s]/g,"")) || 0; return a + v; }, 0);
   const avg = k => filtered.length ? sum(k) / filtered.length : 0;
   const totalSpend = sum("spend");
@@ -1390,14 +1404,7 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
             <button onClick={() => setFilterProd("all")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === "all" ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>전체</button>
             {products.map(p => <button key={p.id} onClick={() => setFilterProd(p.id)} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === p.id ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>{p.name}</button>)}
           </div>
-          <div className="flex items-center gap-2 flex-wrap mb-4">
-            <span className="text-xs text-gray-400">기간</span>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
-            <span className="text-xs text-gray-400">~</span>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
-            {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-gray-400 hover:text-gray-600 underline">초기화</button>}
-            <span className="text-xs text-gray-400">※ CSV의 광고 시작일~종료일 기준으로 필터됩니다</span>
-          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {[["통합 ROAS", avgRoas, "green"], ["총 소진 예산", totalSpend ? `₩${Math.round(totalSpend).toLocaleString()}` : "—", "blue"], ["평균 CTR", avgCtrDisplay, "amber"], ["평균 CPM", `₩${Math.round(avg("cpm")).toLocaleString()}`, "gray"]].map(([l, v, c]) => (
               <div key={l} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
