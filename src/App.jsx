@@ -244,7 +244,7 @@ function getAssetMetrics(assetTitle, csvRows) {
   const matched = csvRows.filter(r => {
     const name = (r.adName || "").toLowerCase();
     const spend = parseFloat(r.spend) || 0;
-    return name.includes(key) && spend >= 10000;
+    return name.includes(key) && spend >= 0; // 필터 해제
   });
   if (!matched.length) return null;
   const sum = (k) => matched.reduce((a, r) => a + (parseFloat(r[k]) || 0), 0);
@@ -1165,6 +1165,111 @@ function DeveloperTab({ meetings, setMeetings, products, assets, csvRows }) {
   );
 }
 
+
+// ── 원본 데이터 테이블 (정렬 + 전체 보기) ────────────────────
+const RAW_COLS = [
+  { key: "live", label: "라이브", sortKey: "endDate" },
+  { key: "startDate", label: "시작일" },
+  { key: "endDate", label: "종료일" },
+  { key: "adName", label: "광고명" },
+  { key: "roas", label: "ROAS", num: true },
+  { key: "ctr", label: "CTR", num: true },
+  { key: "cpc", label: "CPC", num: true },
+  { key: "cpm", label: "CPM", num: true },
+  { key: "spend", label: "지출", num: true },
+  { key: "convValue", label: "매출", num: true },
+];
+
+function RawDataTable({ filtered }) {
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState("desc");
+  const [showAll, setShowAll] = useState(false);
+  const PAGE = 30;
+
+  const handleSort = (col) => {
+    if (sortCol === col) {
+      setSortDir(d => d === "desc" ? "asc" : "desc");
+    } else {
+      setSortCol(col);
+      setSortDir("desc");
+    }
+  };
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (!sortCol) return 0;
+    const col = RAW_COLS.find(c => c.key === sortCol);
+    const sk = col?.sortKey || sortCol;
+    const va = parseFloat(a[sk]) || 0;
+    const vb = parseFloat(b[sk]) || 0;
+    if (col?.num || col?.sortKey) return sortDir === "desc" ? vb - va : va - vb;
+    return sortDir === "desc"
+      ? String(b[sk] || "").localeCompare(String(a[sk] || ""))
+      : String(a[sk] || "").localeCompare(String(b[sk] || ""));
+  });
+
+  const displayed = showAll ? sorted : sorted.slice(0, PAGE);
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-gray-500">전체 원본 데이터 ({filtered.length}행)</p>
+        {filtered.length > PAGE && (
+          <button onClick={() => setShowAll(v => !v)} className="text-xs text-indigo-500 hover:underline">
+            {showAll ? "접기 ▲" : `전체 보기 (${filtered.length}행) ▼`}
+          </button>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-gray-100">
+              {RAW_COLS.map(col => (
+                <th key={col.key}
+                  className="text-left py-2 pr-4 text-gray-400 font-medium whitespace-nowrap cursor-pointer hover:text-gray-700 select-none"
+                  onClick={() => handleSort(col.key)}>
+                  {col.label}
+                  {sortCol === col.key ? (sortDir === "desc" ? " ↓" : " ↑") : " ↕"}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {displayed.map((r, i) => {
+              const live = getLiveStatus(r.endDate);
+              return (
+                <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                  <td className="py-2 pr-4">
+                    <span title={live === "live" ? "라이브 중" : "종료"}>
+                      {live === "live" ? "🟢" : "⚫"}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">{r.startDate ? r.startDate.slice(0,10) : "—"}</td>
+                  <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">{r.endDate ? r.endDate.slice(0,10) : "—"}</td>
+                  <td className="py-2 pr-4 max-w-[200px] truncate text-gray-700">{r.adName || "—"}</td>
+                  <td className="py-2 pr-4 font-semibold text-emerald-600">{r.roas ? `${Math.round(parseFloat(r.roas))}%` : "—"}</td>
+                  <td className="py-2 pr-4">{r.ctr ? `${(parseFloat(r.ctr)/100).toFixed(2)}%` : "—"}</td>
+                  <td className="py-2 pr-4">{r.cpc ? `₩${Math.round(parseFloat(r.cpc)).toLocaleString()}` : "—"}</td>
+                  <td className="py-2 pr-4">{r.cpm ? `₩${Math.round(parseFloat(r.cpm)).toLocaleString()}` : "—"}</td>
+                  <td className="py-2 pr-4">{r.spend ? `₩${Math.round(parseFloat(r.spend)).toLocaleString()}` : "—"}</td>
+                  <td className="py-2 pr-4">{r.convValue ? `₩${Math.round(parseFloat(r.convValue)).toLocaleString()}` : "—"}</td>
+                </tr>
+              );
+            })}
+            {displayed.length === 0 && (
+              <tr><td colSpan={10} className="py-8 text-center text-gray-300">데이터가 없습니다</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {!showAll && filtered.length > PAGE && (
+        <button onClick={() => setShowAll(true)} className="w-full mt-3 py-2 text-xs text-indigo-500 hover:bg-indigo-50 rounded-lg transition">
+          + {filtered.length - PAGE}행 더 보기 ▼
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── TAB 5: META RAW ───────────────────────────────────────────
 function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
   const [filterProd, setFilterProd] = useState("all");
@@ -1176,7 +1281,15 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
     const file = e.target.files[0]; if (!file) return;
     const r = new FileReader();
     r.onload = ev => {
-      const newRows = parseCSV(ev.target.result).map(normRow);
+      const rawRows = parseCSV(ev.target.result);
+      if (rawRows.length > 0) {
+        console.log("CSV 헤더:", Object.keys(rawRows[0]));
+        console.log("첫번째 행:", rawRows[0]);
+      }
+      const newRows = rawRows.map(normRow);
+      if (newRows.length > 0) {
+        console.log("매핑 후 첫번째 행:", newRows[0]);
+      }
       if (mode === "add") {
         setCsvRows(prev => [...prev, ...newRows]);
       } else {
@@ -1184,11 +1297,11 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
       }
     };
     r.readAsText(file, "UTF-8");
-    e.target.value = ""; // 같은 파일 재업로드 허용
+    e.target.value = "";
   };
 
   const matchedRows = csvRows
-    .filter(row => (parseFloat(row.spend) || 0) >= 10000)
+    .filter(row => (parseFloat(row.spend) || 0) >= 0) // 필터 해제 - 전체 표시
     .map(row => {
       const adNameLower = (row.adName || "").toLowerCase();
       // 1. 소재 아카이브에서 제목 매칭
@@ -1299,44 +1412,7 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
               </div>
             </div>
           )}
-          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-            <p className="text-xs font-semibold text-gray-500 mb-3">전체 원본 데이터 ({filtered.length}행)</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    {["라이브","시작일","종료일","광고명","ROAS","CTR","CPC","CPM","지출","매출"].map(h => (
-                      <th key={h} className="text-left py-2 pr-4 text-gray-400 font-medium whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.slice(0, 30).map((r, i) => {
-                    const live = getLiveStatus(r.endDate);
-                    return (
-                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="py-2 pr-4">
-                          <span title={live === "live" ? "라이브 중" : "종료"}>
-                            {live === "live" ? "🟢" : "⚫"}
-                          </span>
-                        </td>
-                        <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">{r.startDate ? r.startDate.slice(0,10) : "—"}</td>
-                        <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">{r.endDate ? r.endDate.slice(0,10) : "—"}</td>
-                        <td className="py-2 pr-4 max-w-[200px] truncate text-gray-700">{r.adName || "—"}</td>
-                        <td className="py-2 pr-4 font-semibold text-emerald-600">{r.roas ? `${Math.round(parseFloat(r.roas))}%` : "—"}</td>
-                        <td className="py-2 pr-4">{r.ctr ? `${(parseFloat(r.ctr)/100).toFixed(2)}%` : "—"}</td>
-                        <td className="py-2 pr-4">{r.cpc ? `₩${Math.round(parseFloat(r.cpc)).toLocaleString()}` : "—"}</td>
-                        <td className="py-2 pr-4">{r.cpm ? `₩${Math.round(parseFloat(r.cpm)).toLocaleString()}` : "—"}</td>
-                        <td className="py-2 pr-4">{r.spend ? `₩${Math.round(parseFloat(r.spend)).toLocaleString()}` : "—"}</td>
-                        <td className="py-2 pr-4">{r.convValue ? `₩${Math.round(parseFloat(r.convValue)).toLocaleString()}` : "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {filtered.length > 30 && <p className="text-xs text-gray-400 mt-2 text-center">+{filtered.length - 30}행 더 있음</p>}
-            </div>
-          </div>
+          <RawDataTable filtered={filtered} />
         </>
       )}
     </div>
