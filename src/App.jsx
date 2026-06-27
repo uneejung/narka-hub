@@ -152,14 +152,34 @@ function matchYM(dateStr, filter) {
 }
 
 // ── CSV 파싱 ──────────────────────────────────────────────────
+function parseCSVLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 function parseCSV(text) {
   const lines = text.trim().split("\n");
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, "").toLowerCase());
+  const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, "").toLowerCase().trim());
   return lines.slice(1).map(line => {
-    const vals = line.split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+    const vals = parseCSVLine(line).map(v => v.replace(/^"|"$/g, "").trim());
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = vals[i] || ""; });
+    headers.forEach((h, i) => { obj[h] = vals[i] !== undefined ? vals[i] : ""; });
     return obj;
   });
 }
