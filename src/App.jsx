@@ -185,37 +185,56 @@ const META_KEYS = {
 
 // CTR은 이미 소수점(%) 값으로 저장되어 있음 - 추가 변환 불필요
 
-function cleanVal(v) {
-  if (!v || v === "" || v === "-") return "";
-  // % 제거 후 숫자로
-  return String(v).replace(/%/g, "").trim();
+function cleanNum(v) {
+  if (!v && v !== 0) return "";
+  return String(v).replace(/[%,\s]/g, "").trim();
 }
+
+// CSV 헤더 → 내부 키 매핑 (정확한 헤더명 기준)
+const CSV_HEADER_MAP = {
+  "보고 시작": "startDate",
+  "보고 종료": "endDate",
+  "광고 이름": "adName",
+  "구매 roas(광고 지출 대비 수익률)": "roas",
+  "ctr(전체)": "ctr",
+  "cpc(전체) (krw)": "cpc",
+  "cpm(1,000회 노출당 비용) (krw)": "cpm",
+  "지출 금액 (krw)": "spend",
+  "구매 전환값": "convValue",
+};
 
 function normRow(row) {
   const out = {};
   Object.entries(row).forEach(([k, v]) => {
-    const keyTrimmed = k.trim();
-    // 부분 매칭으로 컬럼 찾기
-    let mapped = null;
-    const kl = keyTrimmed.toLowerCase();
-    if (keyTrimmed.includes("광고 이름") || keyTrimmed === "광고이름") mapped = "adName";
-    else if (kl.includes("roas")) mapped = "roas";
-    else if (kl.includes("ctr") || keyTrimmed.includes("클릭률")) mapped = "ctr";
-    else if (kl.includes("cpm") || keyTrimmed.includes("1,000회")) mapped = "cpm";
-    else if (kl.includes("cpc") && !kl.includes("roas")) mapped = "cpc";
-    else if (keyTrimmed.includes("지출 금액") || keyTrimmed.includes("소진")) mapped = "spend";
-    else if (keyTrimmed.includes("구매 전환값") || keyTrimmed.includes("웹사이트 구매 전환값") || keyTrimmed.includes("앱 내 구매")) mapped = "convValue";
-    else if (keyTrimmed.includes("노출")) mapped = "impressions";
-    else if (keyTrimmed.includes("클릭(전체)")) mapped = "clicks";
-
-    if (mapped) {
-      if (!out[mapped] || out[mapped] === "") out[mapped] = cleanVal(v);
-    } else {
-      out[keyTrimmed] = v;
+    const kl = k.trim().toLowerCase();
+    // 정확한 매핑 먼저
+    const exact = CSV_HEADER_MAP[kl];
+    if (exact) {
+      out[exact] = cleanNum(v);
+      return;
     }
+    // 부분 매핑 fallback
+    if (kl.includes("광고 이름") || kl === "광고이름") out.adName = v;
+    else if (kl.includes("roas")) { if (!out.roas) out.roas = cleanNum(v); }
+    else if (kl.includes("ctr")) { if (!out.ctr) out.ctr = cleanNum(v); }
+    else if (kl.includes("cpm")) { if (!out.cpm) out.cpm = cleanNum(v); }
+    else if (kl.includes("cpc") && !kl.includes("roas")) { if (!out.cpc) out.cpc = cleanNum(v); }
+    else if (kl.includes("지출 금액") || kl.includes("소진")) { if (!out.spend) out.spend = cleanNum(v); }
+    else if (kl.includes("구매 전환값") || kl.includes("전환값")) { if (!out.convValue) out.convValue = cleanNum(v); }
+    else if (kl.includes("보고 시작") || kl.includes("시작")) { if (!out.startDate) out.startDate = v; }
+    else if (kl.includes("보고 종료") || kl.includes("종료")) { if (!out.endDate) out.endDate = v; }
+    else out[k.trim()] = v;
   });
-  if (!out.adName) out.adName = row["광고 이름"] || row["캠페인 이름"] || "";
+  if (!out.adName) out.adName = "";
   return out;
+}
+
+function getLiveStatus(endDate) {
+  if (!endDate) return "unknown";
+  const today = new Date().toISOString().slice(0, 10);
+  const end = endDate.slice(0, 10);
+  if (end >= today) return "live";
+  return "ended";
 }
 
 function getAssetMetrics(assetTitle, csvRows) {
@@ -223,8 +242,8 @@ function getAssetMetrics(assetTitle, csvRows) {
   const bracket = assetTitle.match(/\[([^\]]+)\]/);
   const key = bracket ? bracket[1].toLowerCase() : assetTitle.toLowerCase();
   const matched = csvRows.filter(r => {
-    const name = (r.adName || r["광고 이름"] || "").toLowerCase();
-    const spend = parseFloat(String(r.spend || r["지출 금액"] || "0").replace(/[,%\s]/g,"")) || 0;
+    const name = (r.adName || "").toLowerCase();
+    const spend = parseFloat(r.spend) || 0;
     return name.includes(key) && spend >= 10000;
   });
   if (!matched.length) return null;
@@ -1169,10 +1188,7 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
   };
 
   const matchedRows = csvRows
-    .filter(row => {
-      const spendVal = parseFloat(String(row.spend || row["지출 금액"] || row["지출금액"] || "0").replace(/[,%\s]/g,"")) || 0;
-      return spendVal >= 10000;
-    })
+    .filter(row => (parseFloat(row.spend) || 0) >= 10000)
     .map(row => {
       const adNameLower = (row.adName || "").toLowerCase();
       // 1. 소재 아카이브에서 제목 매칭
@@ -1287,19 +1303,35 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
             <p className="text-xs font-semibold text-gray-500 mb-3">전체 원본 데이터 ({filtered.length}행)</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead><tr className="border-b border-gray-100">{["광고명","ROAS","CTR","CPM","CPC","소진","전환값"].map(h => <th key={h} className="text-left py-2 pr-4 text-gray-400 font-medium whitespace-nowrap">{h}</th>)}</tr></thead>
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    {["라이브","시작일","종료일","광고명","ROAS","CTR","CPC","CPM","지출","매출"].map(h => (
+                      <th key={h} className="text-left py-2 pr-4 text-gray-400 font-medium whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
                 <tbody>
-                  {filtered.slice(0, 30).map((r, i) => (
-                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="py-2 pr-4 max-w-[200px] truncate text-gray-700">{r.adName || r.campaign || "—"}</td>
-                      <td className="py-2 pr-4 font-semibold text-emerald-600">{r.roas || "—"}</td>
-                      <td className="py-2 pr-4">{r.ctr ? `${parseFloat(r.ctr).toFixed(2)}%` : "—"}</td>
-                      <td className="py-2 pr-4">{r.cpm ? `₩${Math.round(parseFloat(r.cpm)).toLocaleString()}` : "—"}</td>
-                      <td className="py-2 pr-4">{r.cpc ? `₩${Math.round(parseFloat(r.cpc)).toLocaleString()}` : "—"}</td>
-                      <td className="py-2 pr-4">{r.spend ? `₩${Math.round(parseFloat(r.spend)).toLocaleString()}` : "—"}</td>
-                      <td className="py-2 pr-4">{r.convValue ? `₩${Math.round(parseFloat(r.convValue)).toLocaleString()}` : "—"}</td>
-                    </tr>
-                  ))}
+                  {filtered.slice(0, 30).map((r, i) => {
+                    const live = getLiveStatus(r.endDate);
+                    return (
+                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-2 pr-4">
+                          <span title={live === "live" ? "라이브 중" : "종료"}>
+                            {live === "live" ? "🟢" : "⚫"}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">{r.startDate ? r.startDate.slice(0,10) : "—"}</td>
+                        <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">{r.endDate ? r.endDate.slice(0,10) : "—"}</td>
+                        <td className="py-2 pr-4 max-w-[200px] truncate text-gray-700">{r.adName || "—"}</td>
+                        <td className="py-2 pr-4 font-semibold text-emerald-600">{r.roas ? `${Math.round(parseFloat(r.roas))}%` : "—"}</td>
+                        <td className="py-2 pr-4">{r.ctr ? `${(parseFloat(r.ctr)/100).toFixed(2)}%` : "—"}</td>
+                        <td className="py-2 pr-4">{r.cpc ? `₩${Math.round(parseFloat(r.cpc)).toLocaleString()}` : "—"}</td>
+                        <td className="py-2 pr-4">{r.cpm ? `₩${Math.round(parseFloat(r.cpm)).toLocaleString()}` : "—"}</td>
+                        <td className="py-2 pr-4">{r.spend ? `₩${Math.round(parseFloat(r.spend)).toLocaleString()}` : "—"}</td>
+                        <td className="py-2 pr-4">{r.convValue ? `₩${Math.round(parseFloat(r.convValue)).toLocaleString()}` : "—"}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {filtered.length > 30 && <p className="text-xs text-gray-400 mt-2 text-center">+{filtered.length - 30}행 더 있음</p>}
