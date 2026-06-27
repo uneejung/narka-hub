@@ -175,20 +175,36 @@ const META_KEYS = {
 
 // CTR은 이미 소수점(%) 값으로 저장되어 있음 - 추가 변환 불필요
 
+function cleanVal(v) {
+  if (!v || v === "" || v === "-") return "";
+  // % 제거 후 숫자로
+  return String(v).replace(/%/g, "").trim();
+}
+
 function normRow(row) {
   const out = {};
   Object.entries(row).forEach(([k, v]) => {
     const keyTrimmed = k.trim();
-    const mapped = META_KEYS[keyTrimmed] || META_KEYS[keyTrimmed.toLowerCase()] || META_KEYS[keyTrimmed.replace(/\s+/g, " ")];
+    // 부분 매칭으로 컬럼 찾기
+    let mapped = null;
+    const kl = keyTrimmed.toLowerCase();
+    if (keyTrimmed.includes("광고 이름") || keyTrimmed === "광고이름") mapped = "adName";
+    else if (kl.includes("roas")) mapped = "roas";
+    else if (kl.includes("ctr") || keyTrimmed.includes("클릭률")) mapped = "ctr";
+    else if (kl.includes("cpm") || keyTrimmed.includes("1,000회")) mapped = "cpm";
+    else if (kl.includes("cpc") && !kl.includes("roas")) mapped = "cpc";
+    else if (keyTrimmed.includes("지출 금액") || keyTrimmed.includes("소진")) mapped = "spend";
+    else if (keyTrimmed.includes("구매 전환값") || keyTrimmed.includes("웹사이트 구매 전환값") || keyTrimmed.includes("앱 내 구매")) mapped = "convValue";
+    else if (keyTrimmed.includes("노출")) mapped = "impressions";
+    else if (keyTrimmed.includes("클릭(전체)")) mapped = "clicks";
+
     if (mapped) {
-      // 같은 키가 이미 있으면 ROAS는 덮어쓰지 않음 (첫 번째 값 유지)
-      if (!out[mapped] || out[mapped] === "") out[mapped] = v;
+      if (!out[mapped] || out[mapped] === "") out[mapped] = cleanVal(v);
     } else {
       out[keyTrimmed] = v;
     }
   });
-  // adName fallback
-  if (!out.adName) out.adName = out["광고 이름"] || out["campaign"] || "";
+  if (!out.adName) out.adName = row["광고 이름"] || row["캠페인 이름"] || "";
   return out;
 }
 
@@ -205,27 +221,27 @@ function getAssetMetrics(assetTitle, csvRows) {
   const avg = (k) => matched.length ? sum(k) / matched.length : 0;
   const totalSpend = sum("spend");
   const totalConv = sum("convValue");
-  // ROAS: 메타 CSV에서 직접 가져온 값 평균 (전환값/지출 계산 아님)
+  // ROAS: CSV에서 이미 % 형태 (2086% → 2086), 평균 표시
   const avgRoasRaw = avg("roas");
-  const roasVal = avgRoasRaw > 0 ? avgRoasRaw.toFixed(2) : (totalSpend > 0 ? (totalConv / totalSpend).toFixed(2) : null);
-  // CTR: 메타에서 이미 소수점 % 값으로 저장 (0.5 = 0.5%)
+  const roasDisplay = avgRoasRaw > 0 ? `${Math.round(avgRoasRaw)}%` : "—";
+  // CTR: 소수점 값 (1.67 = 1.67%)
   const ctrVal = avg("ctr");
   const cpmVal = avg("cpm");
   const cpcVal = avg("cpc");
   return {
-    roas: roasVal || "—",
+    roas: roasDisplay,
     spend: totalSpend ? `₩${Math.round(totalSpend).toLocaleString()}` : "—",
     convValue: totalConv ? `₩${Math.round(totalConv).toLocaleString()}` : "—",
-    convRate: avg("convRate") ? `${avg("convRate").toFixed(2)}%` : "—",
+    convRate: "—",
     ctr: ctrVal ? `${ctrVal.toFixed(2)}%` : "—",
     cpm: cpmVal ? `₩${Math.round(cpmVal).toLocaleString()}` : "—",
     cpc: cpcVal ? `₩${Math.round(cpcVal).toLocaleString()}` : "—",
-    _roas: roasVal ? parseFloat(roasVal) : 0,
+    _roas: avgRoasRaw || 0,
     _ctr: ctrVal,
     _cpc: cpcVal,
     _spend: totalSpend,
     _convValue: totalConv,
-    _convRate: avg("convRate"),
+    _convRate: 0,
   };
 }
 
@@ -1150,11 +1166,12 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
   });
 
   const filtered = matchedRows.filter(r => filterProd === "all" || r.productId === filterProd);
-  const sum = k => filtered.reduce((a, r) => a + (parseFloat(r[k]) || 0), 0);
+  const sum = k => filtered.reduce((a, r) => { const v = parseFloat(String(r[k]).replace(/%/g,"")) || 0; return a + v; }, 0);
   const avg = k => filtered.length ? sum(k) / filtered.length : 0;
   const totalSpend = sum("spend");
   const totalConv = sum("convValue");
-  const avgRoas = totalSpend > 0 ? (totalConv / totalSpend).toFixed(2) : "—";
+  const allRoas = filtered.map(r => parseFloat(r.roas) || 0).filter(v => v > 0);
+  const avgRoas = allRoas.length > 0 ? `${Math.round(allRoas.reduce((a,b)=>a+b,0)/allRoas.length)}%` : "—";
 
   const assetPerf = matchedRows.filter(r => r.assetId).reduce((acc, r) => {
     const k = r.assetId;
