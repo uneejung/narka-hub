@@ -155,19 +155,40 @@ function parseCSV(text) {
 }
 
 const META_KEYS = {
-  "광고 이름": "adName", "캠페인 이름": "campaign",
-  "roas (광고 지출 대비 수익률)": "roas", "노출": "impressions",
-  "클릭(전체)": "clicks", "ctr(전체)": "ctr", "cpm": "cpm", "cpc(전체)": "cpc",
-  "소진 금액 (krw)": "spend", "구매": "convCount", "구매 전환값": "convValue",
+  "광고 이름": "adName",
+  "캠페인 이름": "campaign",
+  "roas(광고 지출 대비 수익률)": "roas",
+  "roas (광고 지출 대비 수익률)": "roas",
+  "노출": "impressions",
+  "클릭(전체)": "clicks",
+  "ctr(전체)": "ctr",
+  "cpm": "cpm",
+  "cpc(전체)": "cpc",
+  "지출 금액 (krw)": "spend",
+  "지출 금액(krw)": "spend",
+  "소진 금액 (krw)": "spend",
+  "구매": "convCount",
+  "구매 전환값": "convValue",
+  "앱 내 구매웹사이트 구매 전환값": "convValue",
   "구매 roas": "roas",
 };
+
+// CTR은 이미 소수점(%) 값으로 저장되어 있음 - 추가 변환 불필요
 
 function normRow(row) {
   const out = {};
   Object.entries(row).forEach(([k, v]) => {
-    const mapped = META_KEYS[k] || META_KEYS[k.toLowerCase()];
-    if (mapped) out[mapped] = v; else out[k] = v;
+    const keyTrimmed = k.trim();
+    const mapped = META_KEYS[keyTrimmed] || META_KEYS[keyTrimmed.toLowerCase()] || META_KEYS[keyTrimmed.replace(/\s+/g, " ")];
+    if (mapped) {
+      // 같은 키가 이미 있으면 ROAS는 덮어쓰지 않음 (첫 번째 값 유지)
+      if (!out[mapped] || out[mapped] === "") out[mapped] = v;
+    } else {
+      out[keyTrimmed] = v;
+    }
   });
+  // adName fallback
+  if (!out.adName) out.adName = out["광고 이름"] || out["campaign"] || "";
   return out;
 }
 
@@ -184,17 +205,24 @@ function getAssetMetrics(assetTitle, csvRows) {
   const avg = (k) => matched.length ? sum(k) / matched.length : 0;
   const totalSpend = sum("spend");
   const totalConv = sum("convValue");
+  // ROAS: 메타 CSV에서 직접 가져온 값 평균 (전환값/지출 계산 아님)
+  const avgRoasRaw = avg("roas");
+  const roasVal = avgRoasRaw > 0 ? avgRoasRaw.toFixed(2) : (totalSpend > 0 ? (totalConv / totalSpend).toFixed(2) : null);
+  // CTR: 메타에서 이미 소수점 % 값으로 저장 (0.5 = 0.5%)
+  const ctrVal = avg("ctr");
+  const cpmVal = avg("cpm");
+  const cpcVal = avg("cpc");
   return {
-    roas: totalSpend > 0 ? (totalConv / totalSpend).toFixed(2) : "—",
+    roas: roasVal || "—",
     spend: totalSpend ? `₩${Math.round(totalSpend).toLocaleString()}` : "—",
     convValue: totalConv ? `₩${Math.round(totalConv).toLocaleString()}` : "—",
     convRate: avg("convRate") ? `${avg("convRate").toFixed(2)}%` : "—",
-    ctr: avg("ctr") ? `${avg("ctr").toFixed(2)}%` : "—",
-    cpm: avg("cpm") ? `₩${Math.round(avg("cpm")).toLocaleString()}` : "—",
-    cpc: avg("cpc") ? `₩${Math.round(avg("cpc")).toLocaleString()}` : "—",
-    _roas: totalSpend > 0 ? totalConv / totalSpend : 0,
-    _ctr: avg("ctr"),
-    _cpc: avg("cpc"),
+    ctr: ctrVal ? `${ctrVal.toFixed(2)}%` : "—",
+    cpm: cpmVal ? `₩${Math.round(cpmVal).toLocaleString()}` : "—",
+    cpc: cpcVal ? `₩${Math.round(cpcVal).toLocaleString()}` : "—",
+    _roas: roasVal ? parseFloat(roasVal) : 0,
+    _ctr: ctrVal,
+    _cpc: cpcVal,
     _spend: totalSpend,
     _convValue: totalConv,
     _convRate: avg("convRate"),
@@ -1092,17 +1120,24 @@ function DeveloperTab({ meetings, setMeetings, products, assets, csvRows }) {
 
 // ── TAB 5: META RAW ───────────────────────────────────────────
 function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
-  const fileRef = useRef();
   const [filterProd, setFilterProd] = useState("all");
 
-  const handleCSV = e => {
+  const csvAddRef = useRef();
+  const csvReplaceRef = useRef();
+
+  const handleCSV = (mode) => (e) => {
     const file = e.target.files[0]; if (!file) return;
     const r = new FileReader();
     r.onload = ev => {
-      const rows = parseCSV(ev.target.result).map(normRow);
-      setCsvRows(rows);
+      const newRows = parseCSV(ev.target.result).map(normRow);
+      if (mode === "add") {
+        setCsvRows(prev => [...prev, ...newRows]);
+      } else {
+        setCsvRows(newRows);
+      }
     };
     r.readAsText(file, "UTF-8");
+    e.target.value = ""; // 같은 파일 재업로드 허용
   };
 
   const matchedRows = csvRows.map(row => {
@@ -1146,10 +1181,17 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
             <p className="font-semibold text-sm mb-0.5">메타 광고 CSV 업로드</p>
             <p className="text-xs text-gray-400">광고 관리자 → 광고 탭 → 내보내기(CSV). 소재 제목의 [ ] 키워드로 자동 매칭됩니다.</p>
           </div>
-          <div className="flex gap-2 items-center">
-            {csvRows.length > 0 && <span className="text-xs text-emerald-600 font-medium">{csvRows.length}행 · {matchedRows.filter(r => r.assetId).length}개 매칭</span>}
-            <input type="file" accept=".csv" ref={fileRef} onChange={handleCSV} className="hidden" />
-            <button onClick={() => fileRef.current.click()} className="bg-black text-white text-xs px-4 py-2 rounded-full hover:bg-gray-800">CSV 업로드</button>
+          <div className="flex gap-2 items-center flex-wrap">
+            {csvRows.length > 0 && (
+              <span className="text-xs text-emerald-600 font-medium">{csvRows.length}행 · {matchedRows.filter(r => r.assetId).length}개 매칭</span>
+            )}
+            <input type="file" accept=".csv" ref={csvAddRef} onChange={handleCSV("add")} className="hidden" />
+            <input type="file" accept=".csv" ref={csvReplaceRef} onChange={handleCSV("replace")} className="hidden" />
+            <button onClick={() => csvAddRef.current.click()} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-full hover:bg-indigo-700">+ 추가하기</button>
+            <button onClick={() => csvReplaceRef.current.click()} className="bg-black text-white text-xs px-4 py-2 rounded-full hover:bg-gray-800">전체 교체</button>
+            {csvRows.length > 0 && (
+              <button onClick={() => setCsvRows([])} className="text-xs px-3 py-2 rounded-full border border-red-200 text-red-400 hover:bg-red-50">초기화</button>
+            )}
           </div>
         </div>
       </div>
@@ -1427,7 +1469,7 @@ function CreatorForm({ creator, products, onSave, onClose }) {
           <div><Label>계정 핸들</Label><TF value={form.handle} onChange={set("handle")} placeholder="@handle" /></div>
           <div><Label>팔로워 수</Label><TF value={form.followers} onChange={set("followers")} placeholder="ex. 12.5만" /></div>
           <div><Label>콘텐츠 링크</Label><TF value={form.contentUrl} onChange={set("contentUrl")} placeholder="https://instagram.com/..." /></div>
-<div><Label>프로필/콘텐츠 이미지</Label>
+          <div><Label>프로필/콘텐츠 이미지</Label>
             {form.thumbUrl ? (
               <div className="relative group cursor-pointer" onClick={() => set("thumbUrl")("")}>
                 <img src={form.thumbUrl} alt="" className="w-full h-32 object-cover rounded-xl border border-gray-200" />
