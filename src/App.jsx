@@ -222,11 +222,12 @@ function getAssetMetrics(assetTitle, csvRows) {
   const avg = (k) => matched.length ? sum(k) / matched.length : 0;
   const totalSpend = sum("spend");
   const totalConv = sum("convValue");
-  // ROAS: CSV에서 이미 % 형태 (2086% → 2086), 평균 표시
+  // ROAS: CSV에서 % 형태로 저장 (예: 2086 = 2086%)
   const avgRoasRaw = avg("roas");
   const roasDisplay = avgRoasRaw > 0 ? `${Math.round(avgRoasRaw)}%` : "—";
-  // CTR: 소수점 값 (1.67 = 1.67%)
-  const ctrVal = avg("ctr");
+  // CTR: CSV에서 정수로 저장 (예: 672 = 6.72%) → 100으로 나눔
+  const ctrRaw = avg("ctr");
+  const ctrDisplay = ctrRaw > 0 ? `${(ctrRaw / 100).toFixed(2)}%` : "—";
   const cpmVal = avg("cpm");
   const cpcVal = avg("cpc");
   return {
@@ -234,11 +235,11 @@ function getAssetMetrics(assetTitle, csvRows) {
     spend: totalSpend ? `₩${Math.round(totalSpend).toLocaleString()}` : "—",
     convValue: totalConv ? `₩${Math.round(totalConv).toLocaleString()}` : "—",
     convRate: "—",
-    ctr: ctrVal ? `${ctrVal.toFixed(2)}%` : "—",
+    ctr: ctrDisplay,
     cpm: cpmVal ? `₩${Math.round(cpmVal).toLocaleString()}` : "—",
     cpc: cpcVal ? `₩${Math.round(cpcVal).toLocaleString()}` : "—",
     _roas: avgRoasRaw || 0,
-    _ctr: ctrVal,
+    _ctr: ctrRaw / 100,
     _cpc: cpcVal,
     _spend: totalSpend,
     _convValue: totalConv,
@@ -1160,12 +1161,23 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
   const matchedRows = csvRows
     .filter(row => (parseFloat(String(row.spend || "0").replace(/%/g,"")) || 0) >= 10000)
     .map(row => {
+      const adNameLower = (row.adName || "").toLowerCase();
+      // 1. 소재 아카이브에서 제목 매칭
       const asset = assets.find(a => {
         const bracket = a.title?.match(/\[([^\]]+)\]/);
         const key = bracket ? bracket[1].toLowerCase() : (a.title || "").toLowerCase();
-        return key && (row.adName || "").toLowerCase().includes(key);
+        return key && adNameLower.includes(key);
       });
-      return { ...row, assetId: asset?.id || null, productId: asset?.productId || null };
+      if (asset) return { ...row, assetId: asset.id, productId: asset.productId };
+      // 2. 품목명 키워드로 productId 추정 (소재 미등록이어도 품목 분류)
+      const matchedProd = products.find(p => {
+        const pname = p.name.toLowerCase();
+        // 광고명 [ ] 안 키워드와 품목명 비교
+        const bracket = adNameLower.match(/\[([^\]]+)\]/);
+        const adKey = bracket ? bracket[1] : adNameLower;
+        return adKey.includes(pname) || pname.split(" ").some(w => w.length > 1 && adKey.includes(w));
+      });
+      return { ...row, assetId: null, productId: matchedProd?.id || null };
     });
 
   const filtered = matchedRows.filter(r => filterProd === "all" || r.productId === filterProd);
@@ -1173,8 +1185,10 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
   const avg = k => filtered.length ? sum(k) / filtered.length : 0;
   const totalSpend = sum("spend");
   const totalConv = sum("convValue");
-  const allRoas = filtered.map(r => parseFloat(r.roas) || 0).filter(v => v > 0);
+  const allRoas = filtered.map(r => parseFloat(String(r.roas||"").replace(/%/g,"")) || 0).filter(v => v > 0);
   const avgRoas = allRoas.length > 0 ? `${Math.round(allRoas.reduce((a,b)=>a+b,0)/allRoas.length)}%` : "—";
+  const allCtr = filtered.map(r => parseFloat(String(r.ctr||"").replace(/%/g,"")) || 0).filter(v => v > 0);
+  const avgCtrDisplay = allCtr.length > 0 ? `${(allCtr.reduce((a,b)=>a+b,0)/allCtr.length/100).toFixed(2)}%` : "—";
 
   const assetPerf = matchedRows.filter(r => r.assetId).reduce((acc, r) => {
     const k = r.assetId;
@@ -1226,7 +1240,7 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
             {products.map(p => <button key={p.id} onClick={() => setFilterProd(p.id)} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === p.id ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>{p.name}</button>)}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            {[["통합 ROAS", avgRoas, "green"], ["총 소진 예산", totalSpend ? `₩${Math.round(totalSpend).toLocaleString()}` : "—", "blue"], ["평균 CTR", `${avg("ctr").toFixed(2)}%`, "amber"], ["평균 CPM", `₩${Math.round(avg("cpm")).toLocaleString()}`, "gray"]].map(([l, v, c]) => (
+            {[["통합 ROAS", avgRoas, "green"], ["총 소진 예산", totalSpend ? `₩${Math.round(totalSpend).toLocaleString()}` : "—", "blue"], ["평균 CTR", avgCtrDisplay, "amber"], ["평균 CPM", `₩${Math.round(avg("cpm")).toLocaleString()}`, "gray"]].map(([l, v, c]) => (
               <div key={l} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
                 <p className="text-xs text-gray-400 mb-1">{l}</p>
                 <p className={`text-xl font-black ${c === "green" ? "text-emerald-600" : c === "blue" ? "text-blue-600" : c === "amber" ? "text-amber-600" : "text-gray-800"}`}>{v}</p>
