@@ -30,32 +30,33 @@ function useAppState() {
   const [assets, setAssetsRaw] = useState([]);
   const [meetings, setMeetingsRaw] = useState([]);
   const [references, setReferencesRaw] = useState([]);
-  const [csvRows, setCsvRowsRaw] = useState([]);
+  const [csvRows, setCsvRowsRaw] = useState(() => {
+    try { const v = localStorage.getItem("narka_csv"); return v ? JSON.parse(v) : []; } catch { return []; }
+  });
   const [creators, setCreatorsRaw] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const [p, a, m, r, c, cr] = await Promise.all([
+      const [p, a, m, r, cr] = await Promise.all([
         sbGet("narka_products", INIT_PRODUCTS),
         sbGet("narka_assets", []),
         sbGet("narka_meetings", []),
         sbGet("narka_references", []),
-        sbGet("narka_csvrows", []),
         sbGet("narka_creators", []),
       ]);
-      setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r); setCsvRowsRaw(c); setCreatorsRaw(cr);
+      setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r); setCreatorsRaw(cr);
       setLoaded(true);
     }
     load();
     const channel = supabase.channel("narka_sync")
       .on("postgres_changes", { event: "*", schema: "public" }, async () => {
-        const [p, a, m, r, c, cr] = await Promise.all([
+        const [p, a, m, r, cr] = await Promise.all([
           sbGet("narka_products", INIT_PRODUCTS), sbGet("narka_assets", []),
           sbGet("narka_meetings", []), sbGet("narka_references", []),
-          sbGet("narka_csvrows", []), sbGet("narka_creators", []),
+          sbGet("narka_creators", []),
         ]);
-        setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r); setCsvRowsRaw(c); setCreatorsRaw(cr);
+        setProductsRaw(p); setAssetsRaw(a); setMeetingsRaw(m); setReferencesRaw(r); setCreatorsRaw(cr);
       }).subscribe();
     return () => supabase.removeChannel(channel);
   }, []);
@@ -65,12 +66,21 @@ function useAppState() {
     sbSet(table, next); return next;
   });
 
+  // CSV는 localStorage에 저장 (새로고침해도 유지)
+  const setCsvRows = (v) => setCsvRowsRaw(prev => {
+    const next = typeof v === "function" ? v(prev) : v;
+    try { localStorage.setItem("narka_csv", JSON.stringify(next)); } catch(e) {
+      console.warn("CSV localStorage 저장 실패:", e);
+    }
+    return next;
+  });
+
   return {
     products, setProducts: mk(setProductsRaw, "narka_products"),
     assets, setAssets: mk(setAssetsRaw, "narka_assets"),
     meetings, setMeetings: mk(setMeetingsRaw, "narka_meetings"),
     references, setReferences: mk(setReferencesRaw, "narka_references"),
-    csvRows, setCsvRows: mk(setCsvRowsRaw, "narka_csvrows"),
+    csvRows, setCsvRows,
     creators, setCreators: mk(setCreatorsRaw, "narka_creators"),
     loaded,
   };
@@ -214,7 +224,7 @@ function getAssetMetrics(assetTitle, csvRows) {
   const key = bracket ? bracket[1].toLowerCase() : assetTitle.toLowerCase();
   const matched = csvRows.filter(r => {
     const name = (r.adName || r["광고 이름"] || "").toLowerCase();
-    const spend = parseFloat(String(r.spend || "0").replace(/%/g,"")) || 0;
+    const spend = parseFloat(String(r.spend || r["지출 금액"] || "0").replace(/[,%\s]/g,"")) || 0;
     return name.includes(key) && spend >= 10000;
   });
   if (!matched.length) return null;
@@ -1159,7 +1169,10 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
   };
 
   const matchedRows = csvRows
-    .filter(row => (parseFloat(String(row.spend || "0").replace(/%/g,"")) || 0) >= 10000)
+    .filter(row => {
+      const spendVal = parseFloat(String(row.spend || row["지출 금액"] || row["지출금액"] || "0").replace(/[,%\s]/g,"")) || 0;
+      return spendVal >= 10000;
+    })
     .map(row => {
       const adNameLower = (row.adName || "").toLowerCase();
       // 1. 소재 아카이브에서 제목 매칭
@@ -1169,13 +1182,14 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
         return key && adNameLower.includes(key);
       });
       if (asset) return { ...row, assetId: asset.id, productId: asset.productId };
-      // 2. 품목명 키워드로 productId 추정 (소재 미등록이어도 품목 분류)
+      // 2. 품목명 키워드로 productId 추정 (광고명 전체에서 품목명 검색)
       const matchedProd = products.find(p => {
         const pname = p.name.toLowerCase();
-        // 광고명 [ ] 안 키워드와 품목명 비교
-        const bracket = adNameLower.match(/\[([^\]]+)\]/);
-        const adKey = bracket ? bracket[1] : adNameLower;
-        return adKey.includes(pname) || pname.split(" ").some(w => w.length > 1 && adKey.includes(w));
+        // 광고명 전체에서 품목명 또는 주요 키워드 포함 여부 확인
+        if (adNameLower.includes(pname)) return true;
+        // 품목명 단어별로 검색 (2글자 이상)
+        const words = pname.split(/\s+/).filter(w => w.length >= 2);
+        return words.some(w => adNameLower.includes(w));
       });
       return { ...row, assetId: null, productId: matchedProd?.id || null };
     });
