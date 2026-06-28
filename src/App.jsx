@@ -1466,6 +1466,17 @@ function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
   const [filterProd, setFilterProd] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [metaDatePreset, setMetaDatePreset] = useState("last_7d");
+  const [metaLoading, setMetaLoading] = useState(false);
+
+  const fetchMetaAPI = async () => {
+    setMetaLoading(true);
+    try {
+      alert("메타 자동 연동은 API 키 설정 후 사용 가능합니다. CSV 업로드를 이용해주세요.");
+    } finally {
+      setMetaLoading(false);
+    }
+  };
 
   const csvAddRef = useRef();
   const csvReplaceRef = useRef();
