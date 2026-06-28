@@ -586,6 +586,7 @@ function ContentsDashboardTab({ products, assets, csvRows }) {
         ))}
       </div>
       {activeView === "winning" ? <WinningOverviewTab products={products} assets={assets} csvRows={csvRows} /> : (
+      <div>
       <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="bg-white border border-gray-100 rounded-xl p-4 text-center shadow-sm"><p className="text-2xl font-black">{prod.usps.length}</p><p className="text-xs text-gray-400 mt-0.5">전체 편익 꼭지</p></div>
         <div className="bg-white border border-indigo-100 rounded-xl p-4 text-center shadow-sm"><p className="text-2xl font-black text-indigo-600">{coveredUsps}</p><p className="text-xs text-gray-400 mt-0.5">소재 있는 꼭지</p></div>
@@ -670,6 +671,7 @@ function ContentsDashboardTab({ products, assets, csvRows }) {
           })}
         </div>
       )}
+      </div>
       )}
     </div>
   );
