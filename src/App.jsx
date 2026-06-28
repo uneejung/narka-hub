@@ -1454,14 +1454,26 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
             {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-gray-400 hover:text-gray-600 underline">초기화</button>}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            {[["통합 ROAS", avgRoas, "green"], ["총 소진 예산", totalSpend ? `₩${Math.round(totalSpend).toLocaleString()}` : "—", "blue"], ["평균 CTR", avgCtrDisplay, "amber"], ["평균 CPM", `₩${Math.round(avg("cpm")).toLocaleString()}`, "gray"]].map(([l, v, c]) => (
-              <div key={l} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-                <p className="text-xs text-gray-400 mb-1">{l}</p>
-                <p className={`text-xl font-black ${c === "green" ? "text-emerald-600" : c === "blue" ? "text-blue-600" : c === "amber" ? "text-amber-600" : "text-gray-800"}`}>{v}</p>
+          {(() => {
+            const totalConvValue = sum("convValue");
+            const summaryCards = [
+              ["통합 ROAS", avgRoas, "green"],
+              ["총 소진 예산", totalSpend ? `₩${Math.round(totalSpend).toLocaleString()}` : "—", "blue"],
+              ["전환 매출", totalConvValue ? `₩${Math.round(totalConvValue).toLocaleString()}` : "—", "purple"],
+              ["평균 CTR", avgCtrDisplay, "amber"],
+              ["평균 CPM", avg("cpm") ? `₩${Math.round(avg("cpm")).toLocaleString()}` : "—", "gray"],
+            ];
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+                {summaryCards.map(([l, v, c]) => (
+                  <div key={l} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+                    <p className="text-xs text-gray-400 mb-1">{l}</p>
+                    <p className={`text-xl font-black ${c === "green" ? "text-emerald-600" : c === "blue" ? "text-blue-600" : c === "purple" ? "text-purple-600" : c === "amber" ? "text-amber-600" : "text-gray-800"}`}>{v}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
           {assetPerfList.length > 0 && (
             <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm mb-5">
               <p className="text-xs font-semibold text-gray-500 mb-3">아카이브 소재 성과 (자동 매칭)</p>
