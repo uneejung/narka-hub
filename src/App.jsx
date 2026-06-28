@@ -492,10 +492,71 @@ function ProductUSPTab({ products, setProducts }) {
 }
 
 // ── TAB 2: Contents Dashboard (USP 맵) ───────────────────────
-function ContentsDashboardTab({ products, assets }) {
+function WinningOverviewTab({ products, assets, csvRows }) {
+  const winningAssets = assets.filter(a => a.isWinning);
+  const today = new Date().toISOString().slice(0, 10);
+  const weekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString().slice(0, 10);
+  const byProduct = {};
+  products.forEach(p => { byProduct[p.id] = []; });
+  winningAssets.forEach(a => { if (byProduct[a.productId]) byProduct[a.productId].push(a); });
+
+  return (
+    <div>
+      <div className="mb-5">
+        <p className="text-sm font-semibold text-gray-800 mb-0.5">🏆 위닝 소재 전체</p>
+        <p className="text-xs text-gray-400">품목별 위닝 소재를 모아봅니다</p>
+      </div>
+      {winningAssets.length === 0 ? (
+        <div className="text-center py-24 text-gray-300"><p className="text-5xl mb-4">🏆</p><p className="text-sm">소재 아카이브에서 위닝 소재를 체크해주세요</p></div>
+      ) : (
+        <div className="space-y-6">
+          {products.map(p => {
+            const items = byProduct[p.id] || [];
+            if (items.length === 0) return null;
+            return (
+              <div key={p.id}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`w-2 h-2 rounded-full ${p.tag === "MAIN" ? "bg-indigo-400" : "bg-gray-400"}`} />
+                  <p className="text-sm font-semibold text-gray-800">{p.name}</p>
+                  <span className="text-xs text-amber-500 font-medium">{items.length}개</span>
+                </div>
+                <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                  {items.map(a => (
+                    <div key={a.id} className="rounded-xl overflow-hidden border border-amber-200 bg-white shadow-sm">
+                      {(() => { const m = getAssetMetrics(a.title, csvRows, weekAgo, today); return (
+                      a.thumbUrl ? (
+                        <div className="relative cursor-pointer" style={{ aspectRatio: "4/5" }} onClick={() => a.videoUrl && window.open(a.videoUrl, "_blank")}>
+                          <img src={a.thumbUrl} alt="" className="w-full h-full object-cover" />
+                          {a.videoUrl && <div className="absolute inset-0 bg-black/20 flex items-center justify-center"><div className="w-7 h-7 bg-white/90 rounded-full flex items-center justify-center"><span className="text-xs ml-0.5">▶</span></div></div>}
+                          {m?.roas && m.roas !== "—" && <span className="absolute top-1 left-1 text-xs font-bold px-1.5 py-0.5 rounded bg-amber-400 text-white leading-tight">{m.roas}</span>}
+                          <span className="absolute top-1 right-1 text-sm">🏆</span>
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 flex items-center justify-center" style={{ aspectRatio: "4/5" }}>
+                          <span className="text-2xl">🏆</span>
+                        </div>
+                      )); })()}
+                      <div className="p-2">
+                        <p className="text-xs font-semibold text-gray-700 truncate">{a.title || "(제목 없음)"}</p>
+                        {a.mainCopy && <p className="text-xs text-indigo-500 truncate mt-0.5">💬 {a.mainCopy}</p>}
+                        {a.insight && <p className="text-xs text-gray-400 truncate mt-0.5">📝 {a.insight}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContentsDashboardTab({ products, assets, csvRows }) {
+  const [activeView, setActiveView] = useState("winning");
   const [activePid, setActivePid] = useState(products[0]?.id || "");
   const prod = products.find(p => p.id === activePid);
-  if (!prod) return null;
 
   const grouped = {};
   prod.usps.forEach(u => { grouped[u.id] = []; });
@@ -512,14 +573,19 @@ function ContentsDashboardTab({ products, assets }) {
   return (
     <div>
       <div className="flex gap-2 flex-wrap mb-5">
+        <button onClick={() => setActiveView("winning")}
+          className={`text-xs px-3 py-1.5 rounded-full border transition font-medium ${activeView === "winning" ? "bg-amber-400 text-white border-amber-400" : "border-gray-200 text-gray-500"}`}>
+          🏆 위닝 전체
+        </button>
         {products.map(p => (
-          <button key={p.id} onClick={() => setActivePid(p.id)}
-            className={`text-xs px-3 py-1.5 rounded-full border transition flex items-center gap-1.5 ${activePid === p.id ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>
+          <button key={p.id} onClick={() => { setActiveView("product"); setActivePid(p.id); }}
+            className={`text-xs px-3 py-1.5 rounded-full border transition flex items-center gap-1.5 ${activeView === "product" && activePid === p.id ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${p.tag === "MAIN" ? "bg-indigo-400" : "bg-gray-400"}`} />
             {p.name}
           </button>
         ))}
       </div>
+      {activeView === "winning" ? <WinningOverviewTab products={products} assets={assets} csvRows={csvRows} /> : (
       <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="bg-white border border-gray-100 rounded-xl p-4 text-center shadow-sm"><p className="text-2xl font-black">{prod.usps.length}</p><p className="text-xs text-gray-400 mt-0.5">전체 편익 꼭지</p></div>
         <div className="bg-white border border-indigo-100 rounded-xl p-4 text-center shadow-sm"><p className="text-2xl font-black text-indigo-600">{coveredUsps}</p><p className="text-xs text-gray-400 mt-0.5">소재 있는 꼭지</p></div>
@@ -590,7 +656,8 @@ function ContentsDashboardTab({ products, assets }) {
                           )}
                           <div className="p-2">
                             <p className="text-xs font-semibold text-gray-700 truncate">{a.title || "(제목 없음)"}</p>
-                            {copyText && <p className="text-xs text-indigo-500 truncate mt-0.5">📝 {copyText}</p>}
+                            {a.mainCopy && <p className="text-xs text-indigo-500 truncate mt-0.5">💬 {a.mainCopy}</p>}
+                            {copyText && <p className="text-xs text-gray-400 truncate mt-0.5">📝 {copyText}</p>}
                             <p className="text-xs text-gray-400 mt-0.5">{a.status === "ON" ? "🟢 ON" : "⚫ OFF"}</p>
                           </div>
                         </div>
@@ -603,6 +670,7 @@ function ContentsDashboardTab({ products, assets }) {
           })}
         </div>
       )}
+      )}
     </div>
   );
 }
@@ -611,7 +679,7 @@ function ContentsDashboardTab({ products, assets }) {
 function AssetForm({ asset, products, onSave, onClose }) {
   const [form, setForm] = useState(asset || {
     id: genId(), productId: products[0]?.id || "", uspId: "", copyId: "",
-    title: "", painpoint: "", benefit: "",
+    title: "", mainCopy: "", painpoint: "", benefit: "",
     result: "none", isWinning: false, status: "ON",
     insight: "", nextDev: "",
     thumbUrl: "", videoUrl: "",
@@ -691,6 +759,10 @@ function AssetForm({ asset, products, onSave, onClose }) {
             <Label>소재 제목 (광고명과 동일하게, [ ] 안에 키워드)</Label>
             <TF value={form.title} onChange={set("title")} placeholder="ex. [세범_정수리샷]_v3" />
             <p className="text-xs text-gray-400 mt-1">[ ] 안의 키워드로 META RAW 성과를 자동 매칭합니다</p>
+          </div>
+          <div>
+            <Label>메인 카피</Label>
+            <TF value={form.mainCopy || ""} onChange={set("mainCopy")} placeholder="ex. 하루종일 무너지지 않는 스타일" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>페인포인트</Label><TA value={form.painpoint} onChange={set("painpoint")} placeholder="소비자 불편" rows={2} /></div>
@@ -795,6 +867,7 @@ function AssetCard({ asset, products, csvRows, perfFrom = null, perfTo = null, o
       )}
       <div className="p-3">
         <p className="text-xs font-semibold text-gray-800 leading-snug mb-1 truncate">{asset.title || "(제목 없음)"}</p>
+        {asset.mainCopy && <p className="text-xs text-indigo-500 truncate mb-1">💬 {asset.mainCopy}</p>}
         <div className="flex flex-wrap gap-1 mb-1">
           {prod && <Pill color={prod.tag === "MAIN" ? "indigo" : "gray"}>{prod.name}</Pill>}
           {asset.result === "best" && <Pill color="emerald">BEST</Pill>}
@@ -2070,7 +2143,7 @@ function AppInner({ user, signOut }) {
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-4 py-5">
-        {tab === "dashboard" && <ContentsDashboardTab products={products} assets={assets} />}
+        {tab === "dashboard" && <ContentsDashboardTab products={products} assets={assets} csvRows={csvRows} />}
         {tab === "usp" && <ProductUSPTab products={products} setProducts={setProducts} />}
         {tab === "archive" && <NarkaArchiveTab assets={assets} setAssets={setAssets} products={products} csvRows={csvRows} />}
         {tab === "meeting" && <DeveloperTab meetings={meetings} setMeetings={setMeetings} products={products} assets={assets} csvRows={csvRows} />}
