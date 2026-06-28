@@ -726,7 +726,7 @@ function AssetForm({ asset, products, onSave, onClose }) {
   );
 }
 
-function AssetCard({ asset, products, csvRows, perfFrom, perfTo, onClick }) {
+function AssetCard({ asset, products, csvRows, perfFrom = null, perfTo = null, onClick }) {
   const prod = products.find(p => p.id === asset.productId);
   const usp = prod?.usps.find(u => u.id === asset.uspId);
   const metrics = getAssetMetrics(asset.title, csvRows, perfFrom, perfTo);
@@ -787,6 +787,11 @@ function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
   const [showForm, setShowForm] = useState(false);
   const [editAsset, setEditAsset] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // 성과 날짜 필터 (기본: 최근 7일)
+  const [perfFrom, setPerfFrom] = useState(() => new Date(Date.now() - 7*24*60*60*1000).toISOString().slice(0, 10));
+  const [perfTo, setPerfTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const today = new Date().toISOString().slice(0, 10);
+  const weekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString().slice(0, 10);
 
   const handleSave = a => setAssets(prev => { const e = prev.find(x => x.id === a.id); return e ? prev.map(x => x.id === a.id ? a : x) : [...prev, a]; });
   const handleDelete = id => setAssets(prev => prev.filter(a => a.id !== id));
