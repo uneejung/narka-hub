@@ -1472,7 +1472,12 @@ function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
   const fetchMetaAPI = async () => {
     setMetaLoading(true);
     try {
-      alert("메타 자동 연동은 API 키 설정 후 사용 가능합니다. CSV 업로드를 이용해주세요.");
+      const res = await fetch(`/api/meta?date_preset=${metaDatePreset}`);
+      const json = await res.json();
+      if (json.error) { alert("메타 연동 오류: " + json.error); return; }
+      setCsvRows(json.rows || []);
+    } catch (e) {
+      alert("메타 연동 실패: " + e.message);
     } finally {
       setMetaLoading(false);
     }
