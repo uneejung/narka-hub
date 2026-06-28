@@ -1978,6 +1978,50 @@ export default function App() {
   return <AppInner user={user} signOut={signOut} />;
 }
 
+function usePresence(user) {
+  const [onlineMembers, setOnlineMembers] = useState([]);
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase.channel("narka-presence", { config: { presence: { key: user.email } } });
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        const members = Object.values(state).map(arr => arr[0]).filter(Boolean);
+        setOnlineMembers(members);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ name: user.name || user.email?.split("@")[0], email: user.email });
+        }
+      });
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
+  return onlineMembers;
+}
+
+function MemberBadge({ members }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      <div className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border border-gray-200 text-gray-500 cursor-default select-none">
+        <span>💛</span>
+        <span>멤버 {members.length}</span>
+      </div>
+      {show && members.length > 0 && (
+        <div className="absolute right-0 top-8 bg-white border border-gray-100 rounded-xl shadow-lg p-3 z-50 min-w-[140px]">
+          <p className="text-xs text-gray-400 mb-2 font-medium">지금 접속 중</p>
+          {members.map((m, i) => (
+            <div key={i} className="flex items-center gap-1.5 text-xs text-gray-700 py-0.5">
+              <span>💛</span>
+              <span>{m.name || m.email}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AppInner({ user, signOut }) {
   const getInitialTab = () => {
     const hash = window.location.hash.replace("#", "");
@@ -1988,6 +2032,7 @@ function AppInner({ user, signOut }) {
   const setTab = (t) => { setTabRaw(t); window.location.hash = t; };
   const { products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows, creators, setCreators, loaded } = useAppState();
   const { importRef, exportData, importData } = useImportExport({ products, setProducts, assets, setAssets, meetings, setMeetings, references, setReferences, csvRows, setCsvRows, creators, setCreators });
+  const onlineMembers = usePresence(user);
 
   const winningCount = assets.filter(a => a.isWinning).length;
   const onCount = assets.filter(a => a.status === "ON").length;
@@ -2017,6 +2062,7 @@ function AppInner({ user, signOut }) {
             <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-gray-100">
               {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} className="w-6 h-6 rounded-full" alt="" />}
               <span className="text-xs text-gray-600 hidden sm:block">{user.name || user.email?.split("@")[0]}</span>
+              <MemberBadge members={onlineMembers} />
               <button onClick={signOut} className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded-full hover:bg-red-50 transition">로그아웃</button>
             </div>
           </div>
