@@ -173,7 +173,9 @@ function parseCSVLine(line) {
 }
 
 function parseCSV(text) {
-  const lines = text.trim().split("\n");
+  // BOM 제거
+  const cleanText = text.replace(/^\uFEFF/, "");
+  const lines = cleanText.trim().split("\n");
   if (lines.length < 2) return [];
   const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, "").toLowerCase().trim());
   return lines.slice(1).map(line => {
@@ -207,12 +209,13 @@ const META_KEYS = {
 
 function cleanNum(v) {
   if (v === null || v === undefined || v === "") return "";
+  const s = String(v).trim();
+  if (s === "-" || s === "—" || s === "") return "";
   // 쉼표, %, 공백, 통화기호 전부 제거
-  const cleaned = String(v).replace(/[%,\s₩$]/g, "").trim();
-  return cleaned === "-" || cleaned === "—" ? "" : cleaned;
+  return s.replace(/[%,\s₩$]/g, "");
 }
 
-// CSV 헤더 → 내부 키 매핑 (정확한 헤더명 기준)
+// CSV 헤더 → 내부 키 매핑 (실제 메타 CSV 헤더 기준)
 const CSV_HEADER_MAP = {
   "보고 시작": "startDate",
   "보고 종료": "endDate",
@@ -223,29 +226,30 @@ const CSV_HEADER_MAP = {
   "cpm(1,000회 노출당 비용) (krw)": "cpm",
   "지출 금액 (krw)": "spend",
   "구매 전환값": "convValue",
+  "웹사이트 구매 전환값": "convValue",
 };
 
 function normRow(row) {
   const out = {};
   Object.entries(row).forEach(([k, v]) => {
-    const kl = k.trim().toLowerCase();
-    // 정확한 매핑 먼저
+    const kTrim = k.trim();
+    const kl = kTrim.toLowerCase();
+    // 정확한 매핑
     const exact = CSV_HEADER_MAP[kl];
     if (exact) {
-      out[exact] = cleanNum(v);
+      if (!out[exact] || out[exact] === "") out[exact] = cleanNum(v);
       return;
     }
-    // 부분 매핑 fallback
-    if (kl.includes("광고 이름") || kl === "광고이름") out.adName = v;
+    // Fallback 부분 매핑
+    if (kl.includes("광고 이름")) { if (!out.adName) out.adName = v.trim(); }
     else if (kl.includes("roas")) { if (!out.roas) out.roas = cleanNum(v); }
-    else if (kl.includes("ctr")) { if (!out.ctr) out.ctr = cleanNum(v); }
+    else if (kl === "ctr(전체)" || kl.includes("ctr")) { if (!out.ctr) out.ctr = cleanNum(v); }
     else if (kl.includes("cpm")) { if (!out.cpm) out.cpm = cleanNum(v); }
-    else if (kl.includes("cpc") && !kl.includes("roas")) { if (!out.cpc) out.cpc = cleanNum(v); }
-    else if (kl.includes("지출 금액") || kl.includes("소진")) { if (!out.spend) out.spend = cleanNum(v); }
-    else if (kl.includes("구매 전환값") || kl.includes("전환값")) { if (!out.convValue) out.convValue = cleanNum(v); }
-    else if (kl.includes("보고 시작") || kl.includes("시작")) { if (!out.startDate) out.startDate = v; }
-    else if (kl.includes("보고 종료") || kl.includes("종료")) { if (!out.endDate) out.endDate = v; }
-    else out[k.trim()] = v;
+    else if (kl.includes("cpc")) { if (!out.cpc) out.cpc = cleanNum(v); }
+    else if (kl.includes("지출")) { if (!out.spend) out.spend = cleanNum(v); }
+    else if (kl.includes("전환값")) { if (!out.convValue) out.convValue = cleanNum(v); }
+    else if (kl.includes("보고 시작")) { if (!out.startDate) out.startDate = v.trim(); }
+    else if (kl.includes("보고 종료")) { if (!out.endDate) out.endDate = v.trim(); }
   });
   if (!out.adName) out.adName = "";
   return out;
@@ -731,6 +735,8 @@ const SORT_OPTIONS = [
 function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
   const [ymFilter, setYmFilter] = useState("all");
   const [filterProd, setFilterProd] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [filterResult, setFilterResult] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortBy, setSortBy] = useState("");
@@ -1206,16 +1212,8 @@ function RawDataTable({ filtered }) {
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
   const [showAll, setShowAll] = useState(false);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const PAGE = 30;
-
-  // 날짜 필터 적용
-  const dateFiltered = filtered.filter(r => {
-    if (dateFrom && r.startDate && r.startDate.slice(0,10) < dateFrom) return false;
-    if (dateTo && r.endDate && r.endDate.slice(0,10) > dateTo) return false;
-    return true;
-  });
+  const dateFiltered = filtered;
 
   const handleSort = (col) => {
     if (sortCol === col) {
@@ -1242,17 +1240,8 @@ function RawDataTable({ filtered }) {
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <p className="text-xs font-semibold text-gray-500">전체 원본 데이터 ({dateFiltered.length}행{dateFiltered.length !== filtered.length ? ` / 전체 ${filtered.length}행` : ""})</p>
-        <div className="flex items-center gap-2 ml-auto">
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
-          <span className="text-xs text-gray-400">~</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
-          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-gray-400 hover:text-gray-600">초기화</button>}
-        </div>
-      </div>
       <div className="flex items-center justify-between mb-3">
-        <div />
+        <p className="text-xs font-semibold text-gray-500">전체 원본 데이터 ({dateFiltered.length}행)</p>
         {dateFiltered.length > PAGE && (
           <button onClick={() => setShowAll(v => !v)} className="text-xs text-indigo-500 hover:underline">
             {showAll ? "접기 ▲" : `전체 보기 (${filtered.length}행) ▼`}
@@ -1313,6 +1302,8 @@ function RawDataTable({ filtered }) {
 // ── TAB 5: META RAW ───────────────────────────────────────────
 function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
   const [filterProd, setFilterProd] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const csvAddRef = useRef();
   const csvReplaceRef = useRef();
@@ -1363,9 +1354,12 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
       return { ...row, assetId: null, productId: matchedProd?.id || null };
     });
 
-  const filtered = matchedRows.filter(r =>
-    filterProd === "all" || r.productId === filterProd
-  );
+  const filtered = matchedRows.filter(r => {
+    if (filterProd !== "all" && r.productId !== filterProd) return false;
+    if (dateFrom && r.startDate && r.startDate.slice(0,10) < dateFrom) return false;
+    if (dateTo && r.endDate && r.endDate.slice(0,10) > dateTo) return false;
+    return true;
+  });
   const sum = k => filtered.reduce((a, r) => { const v = parseFloat(String(r[k] || "0").replace(/[%,\s]/g,"")) || 0; return a + v; }, 0);
   const avg = k => filtered.length ? sum(k) / filtered.length : 0;
   const totalSpend = sum("spend");
@@ -1419,10 +1413,17 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
         <div className="text-center py-24 text-gray-300"><p className="text-5xl mb-4">📊</p><p className="text-sm font-medium">CSV를 업로드하면 광고 성과가 표시됩니다</p></div>
       ) : (
         <>
-          <div className="flex items-center gap-2 flex-wrap mb-3">
+          <div className="flex items-center gap-2 flex-wrap mb-2">
             <span className="text-xs text-gray-400">품목</span>
             <button onClick={() => setFilterProd("all")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === "all" ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>전체</button>
             {products.map(p => <button key={p.id} onClick={() => setFilterProd(p.id)} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === p.id ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>{p.name}</button>)}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            <span className="text-xs text-gray-400">기간</span>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
+            <span className="text-xs text-gray-400">~</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
+            {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-gray-400 hover:text-gray-600 underline">초기화</button>}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
