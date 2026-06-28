@@ -3,7 +3,7 @@ export const config = { runtime: "edge" };
 const FIELDS = "ad_name,spend,impressions,clicks,ctr,cpm,cpc,purchase_roas,actions,action_values";
 
 async function fetchAdInsights(accountId, token, datePreset = "last_30d") {
-  const url = `https://graph.facebook.com/v19.0/${accountId}/insights?fields=${FIELDS}&level=ad&date_preset=${datePreset}&limit=500&access_token=${token}`;
+  const url = `https://graph.facebook.com/v19.0/${accountId}/insights?fields=${FIELDS}&level=ad&date_preset=${datePreset}&time_increment=1&limit=500&access_token=${token}`;
   const res = await fetch(url);
   const data = await res.json();
   return data;
