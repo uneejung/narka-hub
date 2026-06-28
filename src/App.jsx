@@ -30,9 +30,26 @@ function useAppState() {
   const [assets, setAssetsRaw] = useState([]);
   const [meetings, setMeetingsRaw] = useState([]);
   const [references, setReferencesRaw] = useState([]);
-  const [csvRows, setCsvRowsRaw] = useState(() => {
-    try { const v = localStorage.getItem("narka_csv"); return v ? JSON.parse(v) : []; } catch { return []; }
-  });
+  const [csvRows, setCsvRowsRaw] = useState([]);
+  const [csvLoaded, setCsvLoaded] = useState(false);
+
+  useEffect(() => {
+    // IndexedDB에서 CSV 로드
+    const req = indexedDB.open("narka_hub_db", 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore("csv", { keyPath: "id" });
+    req.onsuccess = e => {
+      const db = e.target.result;
+      const tx = db.transaction("csv", "readonly");
+      const store = tx.objectStore("csv");
+      const get = store.get("csvRows");
+      get.onsuccess = () => {
+        if (get.result) setCsvRowsRaw(get.result.data);
+        setCsvLoaded(true);
+      };
+      get.onerror = () => setCsvLoaded(true);
+    };
+    req.onerror = () => setCsvLoaded(true);
+  }, []);
   const [creators, setCreatorsRaw] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -66,12 +83,18 @@ function useAppState() {
     sbSet(table, next); return next;
   });
 
-  // CSV는 localStorage에 저장 (새로고침해도 유지)
+  // CSV는 IndexedDB에 저장 (용량 제한 없음, 새로고침해도 유지)
   const setCsvRows = (v) => setCsvRowsRaw(prev => {
     const next = typeof v === "function" ? v(prev) : v;
-    try { localStorage.setItem("narka_csv", JSON.stringify(next)); } catch(e) {
-      console.warn("CSV localStorage 저장 실패:", e);
-    }
+    try {
+      const req = indexedDB.open("narka_hub_db", 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore("csv", { keyPath: "id" });
+      req.onsuccess = e => {
+        const db = e.target.result;
+        const tx = db.transaction("csv", "readwrite");
+        tx.objectStore("csv").put({ id: "csvRows", data: next });
+      };
+    } catch(e) { console.warn("CSV IndexedDB 저장 실패:", e); }
     return next;
   });
 
@@ -177,7 +200,7 @@ function parseCSV(text) {
   const cleanText = text.replace(/^\uFEFF/, "");
   const lines = cleanText.trim().split("\n");
   if (lines.length < 2) return [];
-  const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, "").toLowerCase().trim());
+  const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, "").trim());
   return lines.slice(1).map(line => {
     const vals = parseCSVLine(line).map(v => v.replace(/^"|"$/g, "").trim());
     const obj = {};
@@ -215,15 +238,20 @@ function cleanNum(v) {
   return s.replace(/[%,\s₩$]/g, "");
 }
 
-// CSV 헤더 → 내부 키 매핑 (실제 메타 CSV 헤더 기준)
+// CSV 헤더 → 내부 키 매핑 (원본 대소문자 + 소문자 둘 다 커버)
 const CSV_HEADER_MAP = {
   "보고 시작": "startDate",
   "보고 종료": "endDate",
   "광고 이름": "adName",
+  "구매 ROAS(광고 지출 대비 수익률)": "roas",
   "구매 roas(광고 지출 대비 수익률)": "roas",
+  "CTR(전체)": "ctr",
   "ctr(전체)": "ctr",
+  "CPC(전체) (KRW)": "cpc",
   "cpc(전체) (krw)": "cpc",
+  "CPM(1,000회 노출당 비용) (KRW)": "cpm",
   "cpm(1,000회 노출당 비용) (krw)": "cpm",
+  "지출 금액 (KRW)": "spend",
   "지출 금액 (krw)": "spend",
   "구매 전환값": "convValue",
   "웹사이트 구매 전환값": "convValue",
@@ -234,8 +262,8 @@ function normRow(row) {
   Object.entries(row).forEach(([k, v]) => {
     const kTrim = k.trim();
     const kl = kTrim.toLowerCase();
-    // 정확한 매핑
-    const exact = CSV_HEADER_MAP[kl];
+    // 정확한 매핑 (원본 헤더 또는 소문자 둘 다 시도)
+    const exact = CSV_HEADER_MAP[kTrim] || CSV_HEADER_MAP[kl];
     if (exact) {
       if (!out[exact] || out[exact] === "") out[exact] = cleanNum(v);
       return;
