@@ -92,21 +92,15 @@ function useAppState() {
   const [csvLoaded, setCsvLoaded] = useState(false);
 
   useEffect(() => {
-    // IndexedDB에서 CSV 로드
-    const req = indexedDB.open("narka_hub_db", 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore("csv", { keyPath: "id" });
-    req.onsuccess = e => {
-      const db = e.target.result;
-      const tx = db.transaction("csv", "readonly");
-      const store = tx.objectStore("csv");
-      const get = store.get("csvRows");
-      get.onsuccess = () => {
-        if (get.result) setCsvRowsRaw(get.result.data);
-        setCsvLoaded(true);
-      };
-      get.onerror = () => setCsvLoaded(true);
-    };
-    req.onerror = () => setCsvLoaded(true);
+    // Supabase에서 META RAW 로드
+    async function loadCsv() {
+      try {
+        const { data } = await supabase.from("narka_meta_rows").select("value").eq("id", "singleton").single();
+        if (data?.value) setCsvRowsRaw(JSON.parse(data.value));
+      } catch(e) { console.warn("META RAW 로드 실패:", e); }
+      setCsvLoaded(true);
+    }
+    loadCsv();
   }, []);
   const [creators, setCreatorsRaw] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -141,18 +135,12 @@ function useAppState() {
     sbSet(table, next); return next;
   });
 
-  // CSV는 IndexedDB에 저장 (용량 제한 없음, 새로고침해도 유지)
+  // META RAW는 Supabase에 저장 (팀 공유)
   const setCsvRows = (v) => setCsvRowsRaw(prev => {
     const next = typeof v === "function" ? v(prev) : v;
     try {
-      const req = indexedDB.open("narka_hub_db", 1);
-      req.onupgradeneeded = e => e.target.result.createObjectStore("csv", { keyPath: "id" });
-      req.onsuccess = e => {
-        const db = e.target.result;
-        const tx = db.transaction("csv", "readwrite");
-        tx.objectStore("csv").put({ id: "csvRows", data: next });
-      };
-    } catch(e) { console.warn("CSV IndexedDB 저장 실패:", e); }
+      supabase.from("narka_meta_rows").upsert({ id: "singleton", value: JSON.stringify(next) }).then(() => {});
+    } catch(e) { console.warn("META RAW 저장 실패:", e); }
     return next;
   });
 
