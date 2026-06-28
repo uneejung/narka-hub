@@ -1,6 +1,64 @@
 import { supabase } from "./supabase.js";
 import { useState, useRef, useEffect } from "react";
 
+// ── Google 로그인 & 접근 제어 ─────────────────────────────────
+function useAuth() {
+  const [user, setUser] = useState(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) checkAccess(session.user);
+      else setAuthLoaded(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) checkAccess(session.user);
+      else { setUser(null); setAuthLoaded(true); setAccessDenied(false); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function checkAccess(u) {
+    const { data } = await supabase.from("narka_allowed_emails").select("*").eq("email", u.email).single();
+    if (data) { setUser({ ...u, name: data.name, role: data.role }); setAccessDenied(false); }
+    else { setAccessDenied(true); setUser(null); await supabase.auth.signOut(); }
+    setAuthLoaded(true);
+  }
+
+  const signIn = () => supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.origin }
+  });
+  const signOut = () => supabase.auth.signOut();
+
+  return { user, authLoaded, accessDenied, signIn, signOut };
+}
+
+function LoginScreen({ onSignIn, accessDenied }) {
+  return (
+    <div className="min-h-screen bg-[#f7f7f8] flex items-center justify-center">
+      <div className="bg-white rounded-2xl shadow-xl p-10 w-full max-w-sm text-center">
+        <p className="font-black text-2xl tracking-tighter mb-1">NARKA</p>
+        <p className="text-xs text-gray-400 mb-8">Creative Hub</p>
+        {accessDenied ? (
+          <div className="mb-6 p-3 bg-red-50 rounded-xl">
+            <p className="text-sm text-red-500 font-semibold">접근 권한이 없습니다</p>
+            <p className="text-xs text-red-400 mt-1">관리자에게 이메일 등록을 요청하세요</p>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 mb-8">팀원만 접근 가능합니다</p>
+        )}
+        <button onClick={onSignIn}
+          className="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-xl py-3 text-sm font-medium hover:bg-gray-50 transition">
+          <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A353" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
+          Google 계정으로 로그인
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── 초기 데이터 ──────────────────────────────────────────────
 const INIT_PRODUCTS = [
   { id: "p1", name: "슈퍼픽스 헤어마스카라", tag: "MAIN", usps: [{ id: "u1", label: "강력 고정력", copies: [{ id: "c1", text: "하루종일 무너지지 않는 스타일" }] }] },
@@ -1480,17 +1538,30 @@ function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
       <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm mb-5">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <p className="font-semibold text-sm mb-0.5">메타 광고 CSV 업로드</p>
-            <p className="text-xs text-gray-400">광고 관리자 → 광고 탭 → 내보내기(CSV). 소재 제목의 [ ] 키워드로 자동 매칭됩니다.</p>
+            <p className="font-semibold text-sm mb-0.5">메타 광고 데이터</p>
+            <p className="text-xs text-gray-400">🔄 메타 자동 연동 또는 CSV 업로드. [ ] 키워드로 소재 자동 매칭.</p>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-xs text-gray-400">기간</span>
+              {[["last_7d","7일"],["last_14d","14일"],["last_30d","30일"],["last_90d","90일"]].map(([v,l]) => (
+                <button key={v} onClick={() => setMetaDatePreset(v)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition ${metaDatePreset === v ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
             {csvRows.length > 0 && (
-              <span className="text-xs text-emerald-600 font-medium">{csvRows.length}행 · {matchedRows.filter(r => r.assetId).length}개 매칭</span>
+              <span className="text-xs text-emerald-600 font-medium">{csvRows.length}행</span>
             )}
             <input type="file" accept=".csv" ref={csvAddRef} onChange={handleCSV("add")} className="hidden" />
             <input type="file" accept=".csv" ref={csvReplaceRef} onChange={handleCSV("replace")} className="hidden" />
-            <button onClick={() => csvAddRef.current.click()} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-full hover:bg-indigo-700">+ 추가하기</button>
-            <button onClick={() => csvReplaceRef.current.click()} className="bg-black text-white text-xs px-4 py-2 rounded-full hover:bg-gray-800">전체 교체</button>
+            <button onClick={fetchMetaAPI} disabled={metaLoading}
+              className={`text-xs px-4 py-2 rounded-full font-semibold transition ${metaLoading ? "bg-gray-300 text-gray-500" : "bg-emerald-500 text-white hover:bg-emerald-600"}`}>
+              {metaLoading ? "불러오는 중..." : "🔄 메타 자동 연동"}
+            </button>
+            <button onClick={() => csvAddRef.current.click()} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-full hover:bg-indigo-700">+ CSV 추가</button>
+            <button onClick={() => csvReplaceRef.current.click()} className="bg-black text-white text-xs px-4 py-2 rounded-full hover:bg-gray-800">CSV 교체</button>
             {csvRows.length > 0 && (
               <button onClick={() => setCsvRows([])} className="text-xs px-3 py-2 rounded-full border border-red-200 text-red-400 hover:bg-red-50">초기화</button>
             )}
@@ -1883,6 +1954,20 @@ const TABS = [
 ];
 
 export default function App() {
+  const { user, authLoaded, accessDenied, signIn, signOut } = useAuth();
+
+  if (!authLoaded) return (
+    <div className="min-h-screen bg-[#f7f7f8] flex items-center justify-center">
+      <div className="text-center"><p className="text-2xl mb-2">🎬</p><p className="text-sm text-gray-400">로딩 중...</p></div>
+    </div>
+  );
+
+  if (!user) return <LoginScreen onSignIn={signIn} accessDenied={accessDenied} />;
+
+  return <AppInner user={user} signOut={signOut} />;
+}
+
+function AppInner({ user, signOut }) {
   const getInitialTab = () => {
     const hash = window.location.hash.replace("#", "");
     const validTabs = ["dashboard","usp","archive","meeting","metaraw","reference","creator"];
@@ -1914,10 +1999,15 @@ export default function App() {
               <Pill color="blue">🟢 ON {onCount}</Pill>
             </div>
           </div>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 items-center">
             <input type="file" accept=".json" ref={importRef} onChange={importData} className="hidden" />
             <button onClick={() => importRef.current.click()} className="text-xs px-3 py-1.5 border border-gray-200 rounded-full text-gray-500 hover:bg-gray-50">불러오기</button>
             <button onClick={exportData} className="text-xs px-3 py-1.5 bg-black text-white rounded-full hover:bg-gray-800">내보내기</button>
+            <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-gray-100">
+              {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} className="w-6 h-6 rounded-full" alt="" />}
+              <span className="text-xs text-gray-600 hidden sm:block">{user.name || user.email?.split("@")[0]}</span>
+              <button onClick={signOut} className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded-full hover:bg-red-50 transition">로그아웃</button>
+            </div>
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-4 flex overflow-x-auto">
