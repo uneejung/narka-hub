@@ -801,8 +801,8 @@ function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
   if (sortBy) {
     const opt = SORT_OPTIONS.find(o => o.value === sortBy);
     if (opt) filtered = [...filtered].sort((a, b) => {
-      const ma = getAssetMetrics(a.title, csvRows);
-      const mb = getAssetMetrics(b.title, csvRows);
+      const ma = getAssetMetrics(a.title, csvRows, perfFrom, perfTo);
+      const mb = getAssetMetrics(b.title, csvRows, perfFrom, perfTo);
       const va = ma?.[opt.key] || 0;
       const vb = mb?.[opt.key] || 0;
       return (va - vb) * opt.dir;
@@ -1420,22 +1420,7 @@ function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
   const allCtr = filtered.map(r => parseFloat(String(r.ctr||"").replace(/%/g,"")) || 0).filter(v => v > 0);
   const avgCtrDisplay = allCtr.length > 0 ? `${(allCtr.reduce((a,b)=>a+b,0)/allCtr.length/100).toFixed(2)}%` : "—";
 
-  const assetPerf = matchedRows.filter(r => r.assetId).reduce((acc, r) => {
-    const k = r.assetId;
-    if (!acc[k]) acc[k] = { assetId: k, roas: 0, ctr: 0, spend: 0, convValue: 0, cpm: 0, cpc: 0, count: 0 };
-    acc[k].roas += parseFloat(r.roas) || 0;
-    acc[k].ctr += parseFloat(r.ctr) || 0;
-    acc[k].spend += parseFloat(r.spend) || 0;
-    acc[k].convValue += parseFloat(r.convValue) || 0;
-    acc[k].cpm += parseFloat(r.cpm) || 0;
-    acc[k].cpc += parseFloat(r.cpc) || 0;
-    acc[k].count += 1;
-    return acc;
-  }, {});
-  const assetPerfList = Object.values(assetPerf).map(x => ({
-    ...x, roas: (x.roas / x.count).toFixed(2), ctr: (x.ctr / x.count).toFixed(2),
-    cpm: Math.round(x.cpm / x.count).toLocaleString(), cpc: Math.round(x.cpc / x.count).toLocaleString(),
-  })).sort((a, b) => b.roas - a.roas);
+
 
   return (
     <div>
@@ -1569,28 +1554,7 @@ function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
               </div>
             );
           })()}
-          {assetPerfList.length > 0 && (
-            <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm mb-5">
-              <p className="text-xs font-semibold text-gray-500 mb-3">아카이브 소재 성과 (자동 매칭)</p>
-              <div className="space-y-2">
-                {assetPerfList.map(row => {
-                  const asset = assets.find(a => a.id === row.assetId);
-                  const prod = products.find(p => p.id === asset?.productId);
-                  return (
-                    <div key={row.assetId} className="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 hover:border-gray-200 transition">
-                      {asset?.thumbUrl ? <img src={asset.thumbUrl} alt="" className="w-8 h-14 object-cover rounded-lg flex-shrink-0" /> : <div className="w-8 h-14 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0"><span className="text-sm">🎬</span></div>}
-                      <div className="flex-1 min-w-0"><p className="text-xs font-semibold text-gray-800 truncate">{asset?.title || "—"}</p>{prod && <Pill color="indigo">{prod.name}</Pill>}</div>
-                      <div className="flex gap-3 text-right flex-shrink-0">
-                        {[["ROAS",row.roas,"text-emerald-600"],["CTR",`${row.ctr}%`,""],["CPM",`₩${row.cpm}`,""],["CPC",`₩${row.cpc}`,""],["지출",`₩${Math.round(row.spend).toLocaleString()}`,""],["전환값",`₩${Math.round(row.convValue).toLocaleString()}`,""]].map(([k,v,cls]) => (
-                          <div key={k}><p className="text-xs text-gray-400">{k}</p><p className={`text-xs font-bold ${cls}`}>{v}</p></div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+
           <RawDataTable filtered={filtered} />
         </>
       )}
@@ -1859,8 +1823,8 @@ const TABS = [
   { id: "dashboard", label: "📊 Contents Dashboard" },
   { id: "usp", label: "🗂 제품X편익" },
   { id: "archive", label: "🎬 narka archive" },
-  { id: "meeting", label: "📋 Developer" },
   { id: "metaraw", label: "📈 META RAW" },
+  { id: "meeting", label: "📋 Developer" },
   { id: "reference", label: "🔍 Reference" },
   { id: "creator", label: "🌟 Creator" },
 ];
