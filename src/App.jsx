@@ -291,24 +291,39 @@ function getLiveStatus(endDate) {
   return "ended";
 }
 
-function getAssetMetrics(assetTitle, csvRows) {
+function getAssetMetrics(assetTitle, csvRows, dateFrom, dateTo) {
   if (!assetTitle || !csvRows.length) return null;
+  // [ ] 안 텍스트 추출
   const bracket = assetTitle.match(/\[([^\]]+)\]/);
-  const key = bracket ? bracket[1].toLowerCase() : assetTitle.toLowerCase();
+  if (!bracket) return null;
+  const key = bracket[1]; // 원본 대소문자 유지
+
+  // 날짜 기본값: 최근 7일
+  const today = new Date();
+  const defaultFrom = new Date(today);
+  defaultFrom.setDate(defaultFrom.getDate() - 7);
+  const fromStr = dateFrom || defaultFrom.toISOString().slice(0, 10);
+  const toStr = dateTo || today.toISOString().slice(0, 10);
+
   const matched = csvRows.filter(r => {
-    const name = (r.adName || "").toLowerCase();
-    const spend = parseFloat(r.spend) || 0;
-    return name.includes(key) && spend >= 0; // 필터 해제
+    const adName = r.adName || "";
+    // 광고명의 [ ] 안 텍스트 추출 후 완전 일치
+    const adBracket = adName.match(/\[([^\]]+)\]/);
+    if (!adBracket) return false;
+    if (adBracket[1] !== key) return false;
+    // 날짜 필터
+    const rowDate = (r.startDate || "").slice(0, 10);
+    if (rowDate < fromStr || rowDate > toStr) return false;
+    return true;
   });
+
   if (!matched.length) return null;
   const sum = (k) => matched.reduce((a, r) => a + (parseFloat(r[k]) || 0), 0);
   const avg = (k) => matched.length ? sum(k) / matched.length : 0;
   const totalSpend = sum("spend");
   const totalConv = sum("convValue");
-  // ROAS: CSV에서 % 형태로 저장 (예: 2086 = 2086%)
   const avgRoasRaw = avg("roas");
   const roasDisplay = avgRoasRaw > 0 ? `${Math.round(avgRoasRaw)}%` : "—";
-  // CTR: CSV에서 정수로 저장 (예: 672 = 6.72%) → 100으로 나눔
   const ctrRaw = avg("ctr");
   const ctrDisplay = ctrRaw > 0 ? `${(ctrRaw / 100).toFixed(2)}%` : "—";
   const cpmVal = avg("cpm");
@@ -327,6 +342,7 @@ function getAssetMetrics(assetTitle, csvRows) {
     _spend: totalSpend,
     _convValue: totalConv,
     _convRate: 0,
+    matchCount: matched.length,
   };
 }
 
@@ -710,10 +726,10 @@ function AssetForm({ asset, products, onSave, onClose }) {
   );
 }
 
-function AssetCard({ asset, products, csvRows, onClick }) {
+function AssetCard({ asset, products, csvRows, perfFrom, perfTo, onClick }) {
   const prod = products.find(p => p.id === asset.productId);
   const usp = prod?.usps.find(u => u.id === asset.uspId);
-  const metrics = getAssetMetrics(asset.title, csvRows);
+  const metrics = getAssetMetrics(asset.title, csvRows, perfFrom, perfTo);
   const borderClass = asset.isWinning ? "border-amber-300" : asset.result === "best" ? "border-emerald-300" : asset.result === "worst" ? "border-red-200" : "border-gray-100";
 
   return (
@@ -823,6 +839,13 @@ function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
             {SORT_OPTIONS.map(o => <button key={o.value} onClick={() => setSortBy(o.value)} className={`text-xs px-2.5 py-1 rounded-full border transition ${sortBy === o.value ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>{o.label}</button>)}
           </div>
         </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-400 w-8">성과</span>
+          <input type="date" value={perfFrom} onChange={e => setPerfFrom(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
+          <span className="text-xs text-gray-400">~</span>
+          <input type="date" value={perfTo} onChange={e => setPerfTo(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none" />
+          <button onClick={() => { setPerfFrom(weekAgo); setPerfTo(today); }} className="text-xs text-gray-400 hover:text-gray-600 underline">최근 7일</button>
+        </div>
       </div>
       <div className="flex justify-between items-center mb-4">
         <p className="text-xs text-gray-400">{filtered.length}개 소재</p>
@@ -834,7 +857,7 @@ function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {filtered.map(a => (
             <div key={a.id} className="relative group">
-              <AssetCard asset={a} products={products} csvRows={csvRows} onClick={() => { setEditAsset(a); setShowForm(true); }} />
+              <AssetCard asset={a} products={products} csvRows={csvRows} perfFrom={perfFrom} perfTo={perfTo} onClick={() => { setEditAsset(a); setShowForm(true); }} />
               <button onClick={e => { e.stopPropagation(); setDeleteTarget(a.id); }}
                 className="absolute top-2 right-2 w-6 h-6 bg-black/60 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center z-10">
                 ×
@@ -869,7 +892,7 @@ function AssetPicker({ assets, products, csvRows, onSelect, onClose }) {
         <div className="space-y-2 max-h-72 overflow-y-auto">
           {filtered.map(a => {
             const prod = products.find(p => p.id === a.productId);
-            const metrics = getAssetMetrics(a.title, csvRows);
+            const metrics = getAssetMetrics(a.title, csvRows, null, null);
             return (
               <div key={a.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 hover:border-gray-300 cursor-pointer transition" onClick={() => { onSelect(a); onClose(); }}>
                 {a.thumbUrl ? <img src={a.thumbUrl} alt="" className="w-10 h-16 object-cover rounded-lg flex-shrink-0" /> : <div className="w-10 h-16 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0"><span className="text-lg">🎬</span></div>}
@@ -896,7 +919,7 @@ function AssetPicker({ assets, products, csvRows, onSelect, onClose }) {
 function SelectedAssetRow({ assetId, memo, assets, products, csvRows, onMemoChange, onRemove }) {
   const a = assets.find(x => x.id === assetId);
   const prod = a ? products.find(p => p.id === a.productId) : null;
-  const metrics = a ? getAssetMetrics(a.title, csvRows) : null;
+  const metrics = a ? getAssetMetrics(a.title, csvRows, null, null) : null;
   if (!a) return null;
   return (
     <div className="border border-gray-100 rounded-xl p-3 mb-2 bg-white">
@@ -1028,7 +1051,7 @@ function DeveloperTab({ meetings, setMeetings, products, assets, csvRows }) {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
                 {recentAssets.map(a => {
-                  const metrics = getAssetMetrics(a.title, csvRows);
+                  const metrics = getAssetMetrics(a.title, csvRows, null, null);
                   return (
                     <div key={a.id} className="border border-gray-100 rounded-xl p-2">
                       {a.thumbUrl && <img src={a.thumbUrl} alt="" className="w-full h-20 object-cover rounded-lg mb-1" />}
@@ -1328,7 +1351,7 @@ function RawDataTable({ filtered }) {
 }
 
 // ── TAB 5: META RAW ───────────────────────────────────────────
-function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
+function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
   const [filterProd, setFilterProd] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -1471,6 +1494,78 @@ function MetaRawTab({ csvRows, setCsvRows, assets, products }) {
                     <p className={`text-xl font-black ${c === "green" ? "text-emerald-600" : c === "blue" ? "text-blue-600" : c === "purple" ? "text-purple-600" : c === "amber" ? "text-amber-600" : "text-gray-800"}`}>{v}</p>
                   </div>
                 ))}
+              </div>
+            );
+          })()}
+          {(() => {
+            // 미매칭 소재 중 [ ] 키워드 있는 것만 추출 (중복 제거)
+            const seen = new Set();
+            const unmatched = matchedRows.filter(r => {
+              if (r.assetId) return false;
+              const b = (r.adName||"").match(/\[([^\]]+)\]/);
+              if (!b) return false;
+              if (seen.has(b[1])) return false;
+              seen.add(b[1]);
+              return true;
+            });
+            if (!unmatched.length) return null;
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-sm mb-5">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-amber-700">📥 아카이브 미등록 소재 ({unmatched.length}개)</p>
+                  <button onClick={() => {
+                    unmatched.forEach(r => {
+                      const b = (r.adName||"").match(/\[([^\]]+)\]/);
+                      const title = b ? `[${b[1]}]` : r.adName;
+                      const matchedProd = products.find(p => {
+                        const pname = p.name.toLowerCase();
+                        return (r.adName||"").toLowerCase().includes(pname) ||
+                          pname.split(" ").some(w => w.length >= 2 && (r.adName||"").toLowerCase().includes(w));
+                      });
+                      const newAsset = {
+                        id: `id_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+                        productId: matchedProd?.id || products[0]?.id || "",
+                        uspId: "", copyId: "", title,
+                        painpoint: "", benefit: "", result: "none",
+                        isWinning: false, status: "ON", insight: "", nextDev: "",
+                        thumbUrl: "", videoUrl: "",
+                        setupDate: new Date().toISOString().slice(0, 10),
+                      };
+                      setAssets(prev => prev.find(a => a.title === title) ? prev : [...prev, newAsset]);
+                    });
+                    alert(`${unmatched.length}개 소재를 narka archive에 추가했습니다!`);
+                  }} className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-full hover:bg-amber-600">
+                    + 전체 아카이브에 추가
+                  </button>
+                </div>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {unmatched.map((r, i) => {
+                    const b = (r.adName||"").match(/\[([^\]]+)\]/);
+                    return (
+                      <div key={i} className="flex items-center justify-between text-xs py-1 px-2 bg-white rounded-lg">
+                        <span className="text-gray-700 truncate">{b ? `[${b[1]}]` : r.adName}</span>
+                        <button onClick={() => {
+                          const title = b ? `[${b[1]}]` : r.adName;
+                          if (assets.find(a => a.title === title)) { alert("이미 등록된 소재입니다"); return; }
+                          const matchedProd = products.find(p => {
+                            const pname = p.name.toLowerCase();
+                            return (r.adName||"").toLowerCase().includes(pname);
+                          });
+                          setAssets(prev => [...prev, {
+                            id: `id_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+                            productId: matchedProd?.id || products[0]?.id || "",
+                            uspId: "", copyId: "", title,
+                            painpoint: "", benefit: "", result: "none",
+                            isWinning: false, status: "ON", insight: "", nextDev: "",
+                            thumbUrl: "", videoUrl: "",
+                            setupDate: new Date().toISOString().slice(0, 10),
+                          }]);
+                          alert(`[${b?.[1]}] 소재를 추가했습니다`);
+                        }} className="text-xs text-indigo-500 hover:underline ml-2 flex-shrink-0">추가</button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })()}
@@ -1822,7 +1917,7 @@ export default function App() {
         {tab === "usp" && <ProductUSPTab products={products} setProducts={setProducts} />}
         {tab === "archive" && <NarkaArchiveTab assets={assets} setAssets={setAssets} products={products} csvRows={csvRows} />}
         {tab === "meeting" && <DeveloperTab meetings={meetings} setMeetings={setMeetings} products={products} assets={assets} csvRows={csvRows} />}
-        {tab === "metaraw" && <MetaRawTab csvRows={csvRows} setCsvRows={setCsvRows} assets={assets} products={products} />}
+        {tab === "metaraw" && <MetaRawTab csvRows={csvRows} setCsvRows={setCsvRows} assets={assets} setAssets={setAssets} products={products} />}
         {tab === "reference" && <ReferenceTab references={references} setReferences={setReferences} />}
         {tab === "creator" && <CreatorTab products={products} creators={creators} setCreators={setCreators} />}
       </div>
