@@ -787,6 +787,8 @@ function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
   const [showForm, setShowForm] = useState(false);
   const [editAsset, setEditAsset] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   // 성과 날짜 필터 (기본: 최근 7일)
   const [perfFrom, setPerfFrom] = useState(() => new Date(Date.now() - 7*24*60*60*1000).toISOString().slice(0, 10));
   const [perfTo, setPerfTo] = useState(() => new Date().toISOString().slice(0, 10));
@@ -853,7 +855,25 @@ function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
         </div>
       </div>
       <div className="flex justify-between items-center mb-4">
-        <p className="text-xs text-gray-400">{filtered.length}개 소재</p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-gray-400">{filtered.length}개 소재</p>
+          <button onClick={() => { setSelectMode(v => !v); setSelected(new Set()); }}
+            className={`text-xs px-3 py-1 rounded-full border transition ${selectMode ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-500"}`}>
+            {selectMode ? "선택 취소" : "선택 삭제"}
+          </button>
+          {selectMode && selected.size > 0 && (
+            <button onClick={() => setDeleteTarget("multi")}
+              className="text-xs px-3 py-1 rounded-full bg-red-500 text-white">
+              {selected.size}개 삭제
+            </button>
+          )}
+          {selectMode && (
+            <button onClick={() => setSelected(new Set(filtered.map(a => a.id)))}
+              className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500">
+              전체 선택
+            </button>
+          )}
+        </div>
         <button onClick={() => { setEditAsset(null); setShowForm(true); }} className="bg-black text-white text-xs px-4 py-2 rounded-full hover:bg-gray-800">+ 소재 추가</button>
       </div>
       {filtered.length === 0 ? (
@@ -862,17 +882,45 @@ function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {filtered.map(a => (
             <div key={a.id} className="relative group">
-              <AssetCard asset={a} products={products} csvRows={csvRows} perfFrom={perfFrom} perfTo={perfTo} onClick={() => { setEditAsset(a); setShowForm(true); }} />
-              <button onClick={e => { e.stopPropagation(); setDeleteTarget(a.id); }}
-                className="absolute top-2 right-2 w-6 h-6 bg-black/60 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center z-10">
-                ×
-              </button>
+              {selectMode && (
+                <div className="absolute top-2 left-2 z-20 cursor-pointer"
+                  onClick={e => { e.stopPropagation(); setSelected(prev => { const n = new Set(prev); n.has(a.id) ? n.delete(a.id) : n.add(a.id); return n; }); }}>
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selected.has(a.id) ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-300"}`}>
+                    {selected.has(a.id) && <span className="text-white text-xs">✓</span>}
+                  </div>
+                </div>
+              )}
+              <div className={selected.has(a.id) ? "ring-2 ring-indigo-500 rounded-xl" : ""}>
+                <AssetCard asset={a} products={products} csvRows={csvRows} perfFrom={perfFrom} perfTo={perfTo}
+                  onClick={() => { if (selectMode) { setSelected(prev => { const n = new Set(prev); n.has(a.id) ? n.delete(a.id) : n.add(a.id); return n; }); } else { setEditAsset(a); setShowForm(true); } }} />
+              </div>
+              {!selectMode && (
+                <button onClick={e => { e.stopPropagation(); setDeleteTarget(a.id); }}
+                  className="absolute top-2 right-2 w-6 h-6 bg-black/60 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center z-10">
+                  ×
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
       {showForm && <AssetForm asset={editAsset} products={products} onSave={handleSave} onClose={() => { setShowForm(false); setEditAsset(null); }} />}
-      {deleteTarget && <PasswordConfirm onConfirm={() => { handleDelete(deleteTarget); setDeleteTarget(null); }} onCancel={() => setDeleteTarget(null)} />}
+      {deleteTarget && (
+        <PasswordConfirm
+          message={deleteTarget === "multi" ? `${selected.size}개 소재를 삭제하시겠습니까?` : "삭제하려면 비밀번호를 입력하세요"}
+          onConfirm={() => {
+            if (deleteTarget === "multi") {
+              setAssets(prev => prev.filter(a => !selected.has(a.id)));
+              setSelected(new Set());
+              setSelectMode(false);
+            } else {
+              handleDelete(deleteTarget);
+            }
+            setDeleteTarget(null);
+          }}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }
