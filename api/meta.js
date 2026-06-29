@@ -9,7 +9,7 @@ async function fetchAdInsights(accountId, token, datePreset = "last_30d") {
   return data;
 }
 
-function normalizeMeta(row) {
+function normalizeMeta(row, channel) {
   const roas = row.purchase_roas?.[0]?.value;
   const convValue = row.action_values?.find(a => a.action_type === "purchase")?.value;
   return {
@@ -23,6 +23,7 @@ function normalizeMeta(row) {
     cpc: row.cpc || "",
     convValue: convValue || "",
     impressions: row.impressions || "",
+    channel: channel,
   };
 }
 
@@ -39,16 +40,18 @@ export default async function handler(req) {
   }
 
   try {
+    const channels = ["자사몰", "올리브영"];
     const results = await Promise.all([
       account1 ? fetchAdInsights(account1, token, datePreset) : null,
       account2 ? fetchAdInsights(account2, token, datePreset) : null,
     ]);
 
     const rows = [];
-    for (const result of results) {
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
       if (!result || result.error) continue;
       const data = result.data || [];
-      rows.push(...data.map(normalizeMeta));
+      rows.push(...data.map(row => normalizeMeta(row, channels[i])));
     }
 
     return new Response(JSON.stringify({ rows, total: rows.length }), {
