@@ -529,6 +529,7 @@ function WinningOverviewTab({ products, assets, csvRows }) {
                           <img src={a.thumbUrl} alt="" className="w-full h-full object-cover" />
                           {a.videoUrl && <div className="absolute inset-0 bg-black/20 flex items-center justify-center"><div className="w-7 h-7 bg-white/90 rounded-full flex items-center justify-center"><span className="text-xs ml-0.5">▶</span></div></div>}
                           {m?.roas && m.roas !== "—" && <span className="absolute top-1 left-1 text-xs font-bold px-1.5 py-0.5 rounded bg-amber-400 text-white leading-tight">{m.roas}</span>}
+                          {a.channel && <span className={`absolute bottom-1 left-1 text-xs px-1.5 py-0.5 rounded-full text-white font-medium leading-tight ${a.channel === "올리브영" ? "bg-[#909764]" : "bg-[#E2BEBE]"}`}>{a.channel === "올리브영" ? "OY" : "자사"}</span>}
                           <span className="absolute top-1 right-1 text-sm">🏆</span>
                         </div>
                       ) : (
@@ -766,6 +767,17 @@ function AssetForm({ asset, products, onSave, onClose }) {
             <Label>메인 카피</Label>
             <TF value={form.mainCopy || ""} onChange={set("mainCopy")} placeholder="ex. 하루종일 무너지지 않는 스타일" />
           </div>
+          <div>
+            <Label>채널</Label>
+            <div className="flex gap-2 mt-1">
+              {["자사몰", "올리브영"].map(ch => (
+                <button key={ch} type="button" onClick={() => upd({ ...form, channel: ch })}
+                  className={`text-xs px-3 py-1.5 rounded-full border transition ${form.channel === ch || (!form.channel && ch === "자사몰") ? "font-semibold border-transparent " + (ch === "올리브영" ? "bg-[#909764] text-white" : "bg-[#E2BEBE] text-white") : "border-gray-200 text-gray-500"}`}>
+                  {ch}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>페인포인트</Label><TA value={form.painpoint} onChange={set("painpoint")} placeholder="소비자 불편" rows={2} /></div>
             <div><Label>소구 편익</Label><TA value={form.benefit} onChange={set("benefit")} placeholder="전달하는 이점" rows={2} /></div>
@@ -870,6 +882,11 @@ function AssetCard({ asset, products, csvRows, perfFrom = null, perfTo = null, o
       <div className="p-3">
         <p className="text-xs font-semibold text-gray-800 leading-snug mb-1 truncate">{asset.title || "(제목 없음)"}</p>
         {asset.mainCopy && <p className="text-xs text-indigo-500 truncate mb-1">💬 {asset.mainCopy}</p>}
+        {asset.channel && (
+          <span className={`inline-block text-xs px-2 py-0.5 rounded-full text-white font-medium mb-1 ${asset.channel === "올리브영" ? "bg-[#909764]" : "bg-[#E2BEBE]"}`}>
+            {asset.channel}
+          </span>
+        )}
         <div className="flex flex-wrap gap-1 mb-1">
           {prod && <Pill color={prod.tag === "MAIN" ? "indigo" : "gray"}>{prod.name}</Pill>}
           {asset.result === "best" && <Pill color="emerald">BEST</Pill>}
@@ -1499,7 +1516,12 @@ function RawDataTable({ filtered }) {
                   </td>
                   <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">{r.startDate ? r.startDate.slice(0,10) : "—"}</td>
                   <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">{r.endDate ? r.endDate.slice(0,10) : "—"}</td>
-                  <td className="py-2 pr-4 max-w-[200px] truncate text-gray-700">{r.adName || "—"}</td>
+                  <td className="py-2 pr-4 max-w-[200px] text-gray-700">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate">{r.adName || "—"}</span>
+                      {r.channel && <span className={`flex-shrink-0 text-xs px-1.5 py-0.5 rounded-full text-white font-medium ${r.channel === "올리브영" ? "bg-[#909764]" : "bg-[#E2BEBE]"}`}>{r.channel === "올리브영" ? "OY" : "자사"}</span>}
+                    </div>
+                  </td>
                   <td className="py-2 pr-4 font-semibold text-emerald-600">{r.roas ? `${Math.round(parseFloat(r.roas))}%` : "—"}</td>
                   <td className="py-2 pr-4">{r.ctr ? `${(parseFloat(r.ctr)/100).toFixed(2)}%` : "—"}</td>
                   <td className="py-2 pr-4">{r.cpc ? `₩${Math.round(parseFloat(r.cpc)).toLocaleString()}` : "—"}</td>
@@ -1595,8 +1617,11 @@ function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
       return { ...row, assetId: null, productId: matchedProd?.id || null };
     });
 
+  const [filterChannel, setFilterChannel] = useState("all");
+
   const filtered = matchedRows.filter(r => {
     if (filterProd !== "all" && r.productId !== filterProd) return false;
+    if (filterChannel !== "all" && r.channel !== filterChannel) return false;
     if (dateFrom && r.startDate && r.startDate.slice(0,10) < dateFrom) return false;
     if (dateTo && r.endDate && r.endDate.slice(0,10) > dateTo) return false;
     return true;
@@ -1652,6 +1677,12 @@ function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
         <div className="text-center py-24 text-gray-300"><p className="text-5xl mb-4">📊</p><p className="text-sm font-medium">CSV를 업로드하면 광고 성과가 표시됩니다</p></div>
       ) : (
         <>
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <span className="text-xs text-gray-400">채널</span>
+            <button onClick={() => setFilterChannel("all")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterChannel === "all" ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>전체</button>
+            <button onClick={() => setFilterChannel("자사몰")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterChannel === "자사몰" ? "bg-[#E2BEBE] text-white border-transparent" : "border-gray-200 text-gray-500"}`}>자사몰</button>
+            <button onClick={() => setFilterChannel("올리브영")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterChannel === "올리브영" ? "bg-[#909764] text-white border-transparent" : "border-gray-200 text-gray-500"}`}>올리브영</button>
+          </div>
           <div className="flex items-center gap-2 flex-wrap mb-2">
             <span className="text-xs text-gray-400">품목</span>
             <button onClick={() => setFilterProd("all")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === "all" ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>전체</button>
@@ -1715,7 +1746,7 @@ function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
                         productId: matchedProd?.id || products[0]?.id || "",
                         uspId: "", copyId: "", title,
                         painpoint: "", benefit: "", result: "none",
-                        isWinning: false, status: "ON", insight: "", nextDev: "",
+                        isWinning: false, status: "ON", insight: "", nextDev: "", channel: "자사몰",
                         thumbUrl: "", videoUrl: "",
                         setupDate: new Date().toISOString().slice(0, 10),
                       };
