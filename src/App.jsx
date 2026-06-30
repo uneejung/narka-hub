@@ -917,6 +917,7 @@ const SORT_OPTIONS = [
 function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
   const [ymFilter, setYmFilter] = useState("all");
   const [filterProd, setFilterProd] = useState("all");
+  const [filterChannel, setFilterChannel] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [filterResult, setFilterResult] = useState("all");
@@ -939,6 +940,7 @@ function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
   let filtered = assets.filter(a =>
     matchYM(a.setupDate || a.date, ymFilter) &&
     (filterProd === "all" || a.productId === filterProd) &&
+    (filterChannel === "all" || a.channel === filterChannel) &&
     (filterResult === "all" || a.result === filterResult) &&
     (filterStatus === "all" || a.status === filterStatus)
   );
@@ -966,6 +968,14 @@ function NarkaArchiveTab({ assets, setAssets, products, csvRows }) {
           <div className="flex gap-1 flex-wrap">
             <button onClick={() => setFilterProd("all")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === "all" ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>전체</button>
             {products.map(p => <button key={p.id} onClick={() => setFilterProd(p.id)} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterProd === p.id ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>{p.name}</button>)}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-400 w-8">채널</span>
+          <div className="flex gap-1 flex-wrap">
+            <button onClick={() => setFilterChannel("all")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterChannel === "all" ? "bg-black text-white border-black" : "border-gray-200 text-gray-500"}`}>전체</button>
+            <button onClick={() => setFilterChannel("자사몰")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterChannel === "자사몰" ? "bg-[#E2BEBE] text-white border-transparent" : "border-gray-200 text-gray-500"}`}>자사몰</button>
+            <button onClick={() => setFilterChannel("올리브영")} className={`text-xs px-2.5 py-1 rounded-full border transition ${filterChannel === "올리브영" ? "bg-[#909764] text-white border-transparent" : "border-gray-200 text-gray-500"}`}>올리브영</button>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1560,7 +1570,14 @@ function MetaRawTab({ csvRows, setCsvRows, assets, setAssets, products }) {
       const res = await fetch(`/api/meta?date_preset=${metaDatePreset}`);
       const json = await res.json();
       if (json.error) { alert("메타 연동 오류: " + json.error); return; }
-      setCsvRows(json.rows || []);
+      const newRows = json.rows || [];
+      setCsvRows(prev => {
+        // 광고명+시작일+채널을 키로 중복 제거 (새 데이터 우선)
+        const map = new Map();
+        prev.forEach(r => map.set(`${r.adName}__${r.startDate}__${r.channel||""}`, r));
+        newRows.forEach(r => map.set(`${r.adName}__${r.startDate}__${r.channel||""}`, r));
+        return Array.from(map.values());
+      });
     } catch (e) {
       alert("메타 연동 실패: " + e.message);
     } finally {
