@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/oy-dashboard", "destination": "/oy-dashboard/index.html" }
+  ]
+}
