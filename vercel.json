@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/meta.js": {
+      "runtime": "edge"
+    }
+  },
   "routes": [
     { "src": "/oy-dashboard", "dest": "/oy-dashboard/index.html" }
   ]
