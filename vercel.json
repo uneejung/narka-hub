@@ -1,5 +1,5 @@
 {
-  "rewrites": [
-    { "source": "/oy-dashboard", "destination": "/oy-dashboard/index.html" }
+  "routes": [
+    { "src": "/oy-dashboard", "dest": "/oy-dashboard/index.html" }
   ]
 }
