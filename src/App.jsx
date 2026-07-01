@@ -771,7 +771,7 @@ function AssetForm({ asset, products, onSave, onClose }) {
             <Label>채널</Label>
             <div className="flex gap-2 mt-1">
               {["자사몰", "올리브영"].map(ch => (
-                <button key={ch} type="button" onClick={() => upd({ ...form, channel: ch })}
+                <button key={ch} type="button" onClick={() => setForm(f => ({ ...f, channel: ch }))}
                   className={`text-xs px-3 py-1.5 rounded-full border transition ${form.channel === ch || (!form.channel && ch === "자사몰") ? "font-semibold border-transparent " + (ch === "올리브영" ? "bg-[#909764] text-white" : "bg-[#E2BEBE] text-white") : "border-gray-200 text-gray-500"}`}>
                   {ch}
                 </button>
